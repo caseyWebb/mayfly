@@ -155,7 +155,7 @@ class ELFFile:
                 return h
 
 
-a_out = open("src/circuitpy/ulp.bin", "rb")
+a_out = open("build/ulp", "rb")
 e = ELFFile(a_out)
 s = e.get_section(1)
 s = e.get_section_by_name('.symtab')

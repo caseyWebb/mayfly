@@ -36,10 +36,10 @@ flash: src/circuitpy/ulp.bin
 build:
 	mkdir -p build
 
-build/ulp-stripped: build/ulp build
+build/ulp: build/ulp-debug build
 	$(STRIP) -g -o $@ $<
 
-build/ulp: $(SRCS) build/ulp.ld build
+build/ulp-debug: $(SRCS) build/ulp.ld build
 	$(CC) $(CFLAGS) $(SRCS) -o $@ $(LDFLAGS)
 
 build/ulp.ld: src/ulp/link.ld build
@@ -49,5 +49,5 @@ build/ulp.ld: src/ulp/link.ld build
 clean:
 	rm -f build/* src/circuitpy/ulp.bin 
 
-src/circuitpy/ulp.bin: build/ulp-stripped
-	cp build/ulp-stripped src/circuitpy/ulp.bin
+src/circuitpy/ulp.bin: build/ulp
+	cp $< $@
