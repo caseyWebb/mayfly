@@ -30,7 +30,7 @@ SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/ulp_riscv_utils.c
 SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/start.S
 
 .PHONY: flash
-flash: src/circuitpy/ulp/bin
+flash: src/circuitpy/ulp.bin
 	./scripts/flash.sh
 
 build:
@@ -47,7 +47,7 @@ build/ulp.ld: src/ulp/link.ld build
 
 .PHONY: clean
 clean:
-	rm -f build/* src/circuitpy/ulp/bin 
+	rm -f build/* src/circuitpy/ulp.bin 
 
-src/circuitpy/ulp/bin: build/ulp-stripped
-	cp build/ulp-stripped src/circuitpy/ulp/bin
+src/circuitpy/ulp.bin: build/ulp-stripped
+	cp build/ulp-stripped src/circuitpy/ulp.bin

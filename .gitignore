@@ -2,5 +2,5 @@
 .vscode/
 build/
 
-bin
+*.bin
 secrets.py

@@ -7,6 +7,6 @@ fi
 
 echo "Copying src/circuitpy/ to /Volumes/CIRCUITPY..."
 
-rsync -avhP src/circuitpy/ /Volumes/CIRCUITPY
+rsync -avhP --delete src/circuitpy/ /Volumes/CIRCUITPY
 
 echo "Done!"
