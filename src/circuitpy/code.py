@@ -23,27 +23,33 @@ def main():
     # We don't use the second LDO, disable it to save power
     ldo2.disable()
 
-    print("Initializing WiFi...", end=" ")
-    init_wifi()
-    print("Done!")
-
-    print("Setting time...", end=" ")
-    set_time()
-    print("Done!")
-
-    print("Initializing display...", end=" ")
-    display = Display()
-    print("Done!")
-    print("Updating display...", end=" ")
-    display.update(datetime.now())
-    print("Done!")
-    
-    print("Starting ULP...", end=" ")
     ulp = ULP()
-    wake_alarm = ulp.start()
-    print("Done!")
+
+    if alarm.wake_alarm == None:
+        print("No wake alarm, initializing...")
+
+        print("Initializing WiFi...", end=" ")
+        init_wifi()
+        print("Done!")
+
+        print("Setting time...", end=" ")
+        set_time()
+        print("Done!")
     
+        print("Starting ULP...", end=" ")
+        ulp.start()
+        print("Done!")
+    else:
+        print("Wake alarm detected, updating...")
+        
+        print("shared_mem", ulp.shared_mem)
+
+        print("Updating display...", end=" ")
+        Display().update(datetime.now())
+        print("Done!")
+
+
     print("Entering deep sleep...")
-    alarm.exit_and_deep_sleep_until_alarms(wake_alarm)
+    alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
 
 main()
