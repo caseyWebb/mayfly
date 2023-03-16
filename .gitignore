@@ -1,0 +1,6 @@
+.venv/
+.vscode/
+build/
+
+bin
+secrets.py
