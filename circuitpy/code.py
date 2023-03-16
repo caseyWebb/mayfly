@@ -20,13 +20,14 @@ def set_time():
 
 
 def main():
-    # We don't use the second LDO, disable it to save power
-    ldo2.disable()
 
     ulp = ULP()
 
     if alarm.wake_alarm == None:
         print("No wake alarm, initializing...")
+        
+        # We don't use the second LDO, disable it to save power
+        ldo2.disable()
 
         print("Initializing WiFi...", end=" ")
         init_wifi()
@@ -40,8 +41,7 @@ def main():
         ulp.start()
         print("Done!")
     else:
-        print("Wake alarm detected, updating...")
-        
+        print("ULP requested wake up at", datetime.now())
         print("shared_mem", ulp.shared_mem)
 
         print("Updating display...", end=" ")
@@ -49,7 +49,7 @@ def main():
         print("Done!")
 
 
-    print("Entering deep sleep...")
+    print("Entering deep sleep at", datetime.now())
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
 
 main()
