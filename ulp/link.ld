@@ -2,6 +2,9 @@
 
 ENTRY(reset_vector)
 
+PROVIDE ( SENS = 0xC800 );
+PROVIDE ( __assert_func = 0x4001a408 );
+
 MEMORY
 {
     ram(RW) : ORIGIN = 0, LENGTH = COPROC_RESERVE_MEM

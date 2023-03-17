@@ -11,10 +11,16 @@ class ULP:
         self.__program = espulp.ULP(espulp.Architecture.RISCV)
         self.__symtab = elf.get_section_by_name('.symtab')
 
-        memory_map = memorymap.AddressRange(start=0x50000000, length=0x2000)
-
         self.alarm = espulp.ULPAlarm(self.__program)
-        self.shared_mem = memory_map[self.__get_symbol('shared_mem')]
+
+        memory_map = memorymap.AddressRange(start=0x50000000, length=0x2000)
+        self.shared_memory = {
+            'air_temp': memory_map[self.__get_symbol('air_temp')],
+            'water_temp': memory_map[self.__get_symbol('water_temp')],
+            'pH': memory_map[self.__get_symbol('pH')],
+            'dissolved_oxygen': memory_map[self.__get_symbol('dissolved_oxygen')],
+            'water_level': memory_map[self.__get_symbol('water_level')],
+        }
 
     def start(self):
         self.__program.halt()
