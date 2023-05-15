@@ -1,5 +1,5 @@
 ifeq ($(origin IDF_PATH),undefined)
-$(error You must "source esp-idf/export.sh" before building)
+$(error You must "source ./lib/esp-idf/export.sh" before building)
 endif
 
 SHELL := /usr/bin/env bash
