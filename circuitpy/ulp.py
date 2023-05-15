@@ -15,16 +15,17 @@ class ULP:
 
         memory_map = memorymap.AddressRange(start=0x50000000, length=0x2000)
         self.shared_memory = {
-            'air_temp': memory_map[self.__get_symbol('air_temp')],
-            'water_temp': memory_map[self.__get_symbol('water_temp')],
-            'pH': memory_map[self.__get_symbol('pH')],
-            'dissolved_oxygen': memory_map[self.__get_symbol('dissolved_oxygen')],
-            'water_level': memory_map[self.__get_symbol('water_level')],
+            'adc_value': memory_map[self.__get_symbol('adc_value')],
+            # 'air_temp': memory_map[self.__get_symbol('air_temp')],
+            # 'water_temp': memory_map[self.__get_symbol('water_temp')],
+            # 'pH': memory_map[self.__get_symbol('pH')],
+            # 'dissolved_oxygen': memory_map[self.__get_symbol('dissolved_oxygen')],
+            # 'water_level': memory_map[self.__get_symbol('water_level')],
         }
 
     def start(self):
         self.__program.halt()
-        self.__program.run(self.__code, pins=[board.IO11])
+        self.__program.run(self.__code, adc_pin=board.A10)
 
     def __get_symbol(self, name):
         sy = self.__symtab.get_first_symbol_by_name(name)
