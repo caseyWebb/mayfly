@@ -1,55 +1,14 @@
-from adafruit_datetime import datetime
-import adafruit_ntp
-import alarm
-from display import Display
-import ldo2 as ldo2
-import rtc
-from secrets import WIFI_SSID, WIFI_PASS, TZ_OFFSET
-import socketpool
-from ulp import ULP
-import wifi
 
-def init_wifi():
-    wifi.radio.connect(WIFI_SSID, WIFI_PASS)
+import board
+import analogio
+import time
 
+# Create analog input on pin IO1
+pin = analogio.AnalogIn(board.IO1)
 
-def set_time():
-    pool = socketpool.SocketPool(wifi.radio)
-    ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
-    rtc.RTC().datetime = ntp.datetime
+print("Starting")
 
-
-def main():
-
-    ulp = ULP()
-
-    if alarm.wake_alarm == None:
-        print("No wake alarm, initializing...")
-        
-        # We don't use the second LDO, disable it to save power
-        ldo2.disable()
-
-        print("Initializing WiFi...", end=" ")
-        init_wifi()
-        print("Done!")
-
-        print("Setting time...", end=" ")
-        set_time()
-        print("Done!")
-    
-        print("Starting ULP...", end=" ")
-        ulp.start()
-        print("Done!")
-    else:
-        print("ULP requested wake up at", datetime.now())
-        print("shared_mem", ulp.shared_mem)
-
-        print("Updating display...", end=" ")
-        Display().update(datetime.now())
-        print("Done!")
-
-
-    print("Entering deep sleep at", datetime.now())
-    alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
-
-main()
+while True:
+    # Read and print the voltage of the analog pin
+    print("IO1 Voltage: ", pin.value)
+    time.sleep(0.1)
