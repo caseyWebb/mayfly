@@ -2,6 +2,7 @@ from adafruit_datetime import datetime
 import adafruit_ntp
 import alarm
 from display import Display
+import espadc
 import ldo2 as ldo2
 import rtc
 from secrets import WIFI_SSID, WIFI_PASS, TZ_OFFSET
@@ -46,6 +47,7 @@ def main():
     else:
         print("ULP requested wake up at", datetime.now())
         print("shared_mem", ulp.shared_memory)
+        print("voltage", espadc.raw_to_voltage(ulp.shared_memory['air_temp']))
 
         print("Updating display...", end=" ")
         # Display().update(datetime.now())

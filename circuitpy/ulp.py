@@ -15,7 +15,7 @@ class ULP:
         self.alarm = espulp.ULPAlarm(self.__program)
 
         self.shared_memory = {
-            'adc_value': self.__get_uint16('adc_value'),
+            'air_temp': self.__get_uint16('air_temp'),
             # 'air_temp': memory_map[self.__get_symbol('air_temp')],
             # 'water_temp': memory_map[self.__get_symbol('water_temp')],
             # 'pH': memory_map[self.__get_symbol('pH')],
@@ -36,7 +36,7 @@ class ULP:
     def __get_uint16(self, name):
         output = 0
         for i in range(2):
-            symbol = self.__get_symbol(f'{name}0x0{i}')
+            symbol = self.__get_symbol(f'{name}_0x0{i}')
             byte = self.__memory_map[symbol]
             output |= byte << (i * 8)
         return output
