@@ -48,8 +48,8 @@ EXPORT volatile uint8_t adc_value0x01;
  */
 int16_t sample_adc()
 {
-    uint8_t samples = 8;
-    int64_t sum = 0;
+    uint8_t samples = 255;
+    uint16_t sum = 0;
     for (uint8_t i = 0; i < samples; i++)
     {
         sum += ulp_riscv_adc_read_channel(ADC_UNIT_1, ADC_CHANNEL_0);
@@ -71,8 +71,6 @@ int main(void)
     // ulp_riscv_gpio_init(PH_ENABLE_PIN);
     // ulp_riscv_gpio_init(DO_ENABLE_PIN);
     // ulp_riscv_gpio_init(WATER_LEVEL_ENABLE_PIN);
-
-    // adc_value = 255;
 
     uint16_t value = sample_adc();
     uint8_t bytes[2];
