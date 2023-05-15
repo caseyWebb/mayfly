@@ -28,12 +28,42 @@
 // #define DO_ENABLE_PIN GPIO_NUM_14
 // #define WATER_LEVEL_ENABLE_PIN GPIO_NUM_15
 
-EXPORT volatile uint8_t adc_value;
+/**
+ * Shared memory values are always 8-bit integers, so to pass larger numbers
+ * (ADC has 13-bit resolution) we need to split the number into 2 bytes.
+ *
+ * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
+ */
+EXPORT volatile uint8_t adc_value0x00;
+EXPORT volatile uint8_t adc_value0x01;
 // EXPORT volatile uint8_t air_temp;
 // EXPORT volatile uint8_t water_temp;
 // EXPORT volatile uint8_t pH;
 // EXPORT volatile uint8_t dissolved_oxygen;
 // EXPORT volatile uint8_t water_level;
+
+/**
+ * These values can be all over the place, so sample and take the average
+ * to smooth them out.
+ */
+int16_t sample_adc()
+{
+    uint8_t samples = 8;
+    int64_t sum = 0;
+    for (uint8_t i = 0; i < samples; i++)
+    {
+        sum += ulp_riscv_adc_read_channel(ADC_UNIT_1, ADC_CHANNEL_0);
+    }
+    return sum / samples;
+}
+
+void convert_uint16_to_uint8(uint32_t input, uint8_t bytes[2])
+{
+    for (int i = 0; i < 2; i++)
+    {
+        bytes[i] = (input >> (i * 8)) & 0xff;
+    }
+}
 
 int main(void)
 {
@@ -44,7 +74,11 @@ int main(void)
 
     // adc_value = 255;
 
-    adc_value = ulp_riscv_adc_read_channel(ADC_UNIT_1, ADC_CHANNEL_0);
+    uint16_t value = sample_adc();
+    uint8_t bytes[2];
+    convert_uint16_to_uint8(value, bytes);
+    adc_value0x00 = bytes[0];
+    adc_value0x01 = bytes[1];
 
     ulp_riscv_wakeup_main_processor();
 
