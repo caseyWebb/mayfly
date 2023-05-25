@@ -21,11 +21,10 @@
 #undef ULP_RISCV_CYCLES_PER_MS
 #define ULP_RISCV_CYCLES_PER_MS (int)(1000 * ULP_RISCV_CYCLES_PER_US)
 
-// #define ONE_WIRE_BUS GPIO_NUM_12
-// #define ADC_CHANNEL ADC1_CHANNEL_7
-// #define PH_ENABLE_PIN GPIO_NUM_13
-// #define DO_ENABLE_PIN GPIO_NUM_14
-// #define WATER_LEVEL_ENABLE_PIN GPIO_NUM_15
+#define ANALOG_SENSORS_ENABLE_PIN GPIO_NUM_0
+#define PH_ADC_CHANNEL ADC_CHANNEL_5
+#define DO_ADC_CHANNEL ADC_CHANNEL_4
+#define ONE_WIRE_BUS GPIO_NUM_8
 
 /**
  * Shared memory values are always 8-bit integers, so to pass larger numbers
@@ -33,30 +32,13 @@
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
-EXPORT volatile uint8_t air_temp_0x00;
-EXPORT volatile uint8_t air_temp_0x01;
 EXPORT volatile uint8_t pH_0x00;
 EXPORT volatile uint8_t pH_0x01;
-EXPORT volatile uint8_t dissolved_oxygen_0x00;
-EXPORT volatile uint8_t dissolved_oxygen_0x01;
-EXPORT volatile uint8_t water_level_0x00;
-EXPORT volatile uint8_t water_level_0x01;
+EXPORT volatile uint8_t DO_0x00;
+EXPORT volatile uint8_t DO_0x01;
 
-/**
- * These values can be all over the place. Use multisampling to smooth.
- */
-int16_t sample_adc()
-{
-    uint8_t samples = 255;
-    uint32_t sum = 0;
-    for (uint8_t i = 0; i < samples; i++)
-    {
-        // The ADC has 13-bit resolution, max value 8191.
-        // 255 * 8191 = 2087045, which comfortably fits in a 32-bit integer.
-        sum += ulp_riscv_adc_read_channel(ADC_UNIT_1, ADC_CHANNEL_0);
-    }
-    return sum / samples;
-}
+EXPORT volatile uint8_t step;
+EXPORT volatile bool modified;
 
 /**
  * Helpers for converting between 8-bit and 16-bit integers.
@@ -78,45 +60,160 @@ uint16_t convert_uint8_to_uint16(uint8_t bytes[2])
     return output;
 }
 
-void update_analog_sensor(uint8_t *msb, uint8_t *lsb, bool *modified)
+void init_analog_sensors()
+{
+    ulp_riscv_gpio_init(ANALOG_SENSORS_ENABLE_PIN);
+    ulp_riscv_gpio_output_enable(ANALOG_SENSORS_ENABLE_PIN);
+}
+void enable_analog_sensors()
+{
+    ulp_riscv_gpio_output_level(ANALOG_SENSORS_ENABLE_PIN, 1);
+}
+void disable_analog_sensors()
+{
+    ulp_riscv_gpio_output_level(ANALOG_SENSORS_ENABLE_PIN, 0);
+}
+uint16_t read_analog_sensor(adc_channel_t adc_channel)
+{
+    // ADC has 13-bit resolution, 2^16 / 2^13 = 2^3 = 8 samples
+    uint16_t sum = 0;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        sum += ulp_riscv_adc_read_channel(ADC_UNIT_1, adc_channel);
+    }
+    return sum / 8;
+}
+void update_analog_sensor_reading(adc_channel_t adc_channel, volatile uint8_t *msb, volatile uint8_t *lsb)
 {
     uint16_t last_reading = convert_uint8_to_uint16((uint8_t[]){*msb, *lsb});
-    uint16_t current_reading = sample_adc();
-    if (abs(current_reading - last_reading) > 20) {
+    uint16_t current_reading = read_analog_sensor(adc_channel);
+    if (abs(current_reading - last_reading) > 20)
+    {
         uint8_t bytes[2];
         convert_uint16_to_uint8(current_reading, bytes);
         *msb = bytes[0];
         *lsb = bytes[1];
-        *modified = true;
+        modified = true;
     }
 }
 
+static void ds18b20_write_bit(bool bit)
+{
+    ulp_riscv_gpio_output_level(ONE_WIRE_BUS, 0);
+    if (bit)
+    {
+        /* Must pull high within 15 us, without delay this takes 5 us */
+        ulp_riscv_gpio_output_level(ONE_WIRE_BUS, 1);
+    }
+
+    /* Write slot duration at least 60 us */
+    ulp_riscv_delay_cycles(60 * ULP_RISCV_CYCLES_PER_US);
+    ulp_riscv_gpio_output_level(ONE_WIRE_BUS, 1);
+}
+static bool ds18b20_read_bit(void)
+{
+    bool bit;
+
+    /* Pull low minimum 1 us */
+    ulp_riscv_gpio_output_level(ONE_WIRE_BUS, 0);
+    ulp_riscv_gpio_output_level(ONE_WIRE_BUS, 1);
+
+    /* Must sample within 15 us of the failing edge */
+    ulp_riscv_delay_cycles(5 * ULP_RISCV_CYCLES_PER_US);
+    bit = ulp_riscv_gpio_get_level(ONE_WIRE_BUS);
+
+    /* Read slot duration at least 60 us */
+    ulp_riscv_delay_cycles(55 * ULP_RISCV_CYCLES_PER_US);
+
+    return bit;
+}
+static void ds18b20_write_byte(uint8_t data)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        ds18b20_write_bit((data >> i) & 0x1);
+    }
+}
+static uint8_t ds18b20_read_byte(void)
+{
+    uint8_t data = 0;
+    for (int i = 0; i < 8; i++)
+    {
+        data |= ds18b20_read_bit() << i;
+    }
+    return data;
+}
+bool ds18b20_reset_pulse(void)
+{
+    bool presence_pulse;
+    /* min 480 us reset pulse + 480 us reply time is specified by datasheet */
+    ulp_riscv_gpio_output_level(EXAMPLE_1WIRE_GPIO, 0);
+    ulp_riscv_delay_cycles(480 * ULP_RISCV_CYCLES_PER_US);
+
+    ulp_riscv_gpio_output_level(EXAMPLE_1WIRE_GPIO, 1);
+
+    /* Wait for ds18b20 to pull low before sampling */
+    ulp_riscv_delay_cycles(60 * ULP_RISCV_CYCLES_PER_US);
+    presence_pulse = ulp_riscv_gpio_get_level(EXAMPLE_1WIRE_GPIO) == 0;
+
+    ulp_riscv_delay_cycles(420 * ULP_RISCV_CYCLES_PER_US);
+
+    return presence_pulse;
+}
+
+void on_cycle_complete()
+{
+    step = 1;
+    if (modified)
+    {
+        modified = false;
+        ulp_riscv_wakeup_main_processor();
+    }
+}
+
+void init_onewire()
+{
+    ulp_riscv_gpio_init(ONE_WIRE_BUS);
+    ulp_riscv_gpio_input_enable(ONE_WIRE_BUS);
+    ulp_riscv_gpio_output_enable(ONE_WIRE_BUS);
+    ulp_riscv_gpio_set_output_mode(ONE_WIRE_BUS, RTCIO_MODE_OUTPUT_OD);
+    ulp_riscv_gpio_pullup(ONE_WIRE_BUS);
+    ulp_riscv_gpio_pulldown_disable(ONE_WIRE_BUS);
+}
+
+void update_sensor_readings()
+{
+    enable_analog_sensors();
+
+    if (!ds18b20_reset_pulse())
+    {
+        temp_reg_val = INT32_MIN;
+        br
+    }
+
+    sleep(750);
+
+    update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
+    update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
+
+    disable_analog_sensors();
+}
 
 int main(void)
 {
-    // ulp_riscv_gpio_init(ONE_WIRE_BUS);
-    // ulp_riscv_gpio_init(PH_ENABLE_PIN);
-    // ulp_riscv_gpio_init(DO_ENABLE_PIN);
-    // ulp_riscv_gpio_init(WATER_LEVEL_ENABLE_PIN);
-    
-    bool modified = false;
+    switch (step++)
+    {
+    case 0:
+        init_analog_sensors();
+        init_onewire();
 
-    update_analog_sensor(&air_temp_0x00, &air_temp_0x01, &modified);
-    update_analog_sensor(&pH_0x00, &pH_0x01, &modified);
-    update_analog_sensor(&dissolved_oxygen_0x00, &dissolved_oxygen_0x01, &modified);
-    update_analog_sensor(&water_level_0x00, &water_level_0x01, &modified);
+        update_sensor_readings();
 
-    if (modified) {
-        ulp_riscv_wakeup_main_processor();
+        on_cycle_complete();
+        break;
+    default:
+        on_cycle_complete();
     }
-
-    /**
-     * Using ulp_set_wakeup_period causes all sorts of complications with the compiler
-     * configuration so set the timer register directly.
-     *
-     * UINT64_MAX ends up being about 3 minutes, perfect for the e-ink display max refresh rate.
-     */
-    // REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, UINT64_MAX);
 
     return 0;
 }
