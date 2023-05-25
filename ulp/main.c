@@ -28,8 +28,8 @@
 #define PH_ADC_CHANNEL ADC_CHANNEL_5
 #define DO_ADC_CHANNEL ADC_CHANNEL_4
 #define ONEWIRE_BUS GPIO_NUM_8
-#define AIR_TEMP_ONEWIRE_ADDRESS ((uint64_t)0xA10000017A7DFF28)
-#define WATER_TEMP_ONEWIRE_ADDRESS ((uint64_t)0xA10000017A7DFF28)
+static uint8_t AIR_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x18, 0x1e, 0x78, 0x25, 0x20, 0x01, 0xb0};
+static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x20, 0x01, 0xc5};
 
 /**
  * Shared memory values are always 8-bit integers, so to pass larger numbers
@@ -52,6 +52,10 @@ EXPORT volatile bool modified;
 void sleep_us(uint32_t us)
 {
     ulp_riscv_delay_cycles(us * ULP_RISCV_CYCLES_PER_US);
+}
+void sleep_ms(uint32_t ms)
+{
+    sleep_us(ms * 1000);
 }
 
 /**
@@ -193,7 +197,7 @@ bool onewire_reset(void)
 
     return presence_pulse;
 }
-void onewire_match_rom(uint64_t onewire_address)
+void onewire_match_rom(uint8_t *onewire_address)
 {
     if (!onewire_reset())
     {
@@ -202,7 +206,7 @@ void onewire_match_rom(uint64_t onewire_address)
     onewire_write_byte(MATCH_ROM);
     for (int i = 0; i < 8; i++)
     {
-        onewire_write_byte(onewire_address >> (i * 8));
+        onewire_write_byte(onewire_address[i]);
     }
 }
 void onewire_convert_t()
@@ -224,7 +228,7 @@ void init_onewire()
     ulp_riscv_gpio_pulldown_disable(ONEWIRE_BUS);
 }
 
-void update_onewire_sensor_reading(uint16_t onewire_address, volatile uint8_t *msb, volatile uint8_t *lsb)
+void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *msb, volatile uint8_t *lsb)
 {
     onewire_match_rom(onewire_address);
     onewire_write_byte(READ_SCRATCHPAD);
@@ -242,18 +246,18 @@ int main(void)
 {
     if (!initialized)
     {
-        init_analog_sensors();
+        // init_analog_sensors();
         init_onewire();
     }
 
     onewire_convert_t();
-    enable_analog_sensors();
+    // enable_analog_sensors();
 
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
     sleep_ms(750);
 
-    update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
-    update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
+    // update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
+    // update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
     disable_analog_sensors();
 
     update_onewire_sensor_reading(AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
@@ -261,7 +265,7 @@ int main(void)
 
     if (!initialized || modified)
     {
-        initialized = true;
+        // initialized = true;
         modified = false;
         ulp_riscv_wakeup_main_processor();
     }

@@ -45,12 +45,14 @@ def init():
 
 
 def update():
-    print("pH:", sensors.pH)
-    print("DO:", sensors.DO)
+    # print("pH:", sensors.pH)
+    # print("DO:", sensors.DO)
+    print("Air temp:", sensors.air_temp)
+    print("Water temp:", sensors.water_temp)
 
-    print("Updating display...", end=" ")
+    # print("Updating display...", end=" ")
     # Display().update(datetime.now())
-    print("Done!")
+    # print("Done!")
 
 def main():
     if alarm.wake_alarm == None:

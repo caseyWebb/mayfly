@@ -19,3 +19,11 @@ class Sensors:
         raw = self.__shared_memory.read_uint16('DO')
         voltage = espadc.raw_to_voltage(raw)
         return voltage
+    
+    @property
+    def air_temp(self):
+        return self.__shared_memory.read_uint16('air_temp') / 16.0
+    
+    @property
+    def water_temp(self):
+        return self.__shared_memory.read_uint16('water_temp') / 16.0
