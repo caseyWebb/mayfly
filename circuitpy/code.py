@@ -4,12 +4,15 @@ from secrets import WIFI_SSID, WIFI_PASS, TZ_OFFSET
 import supervisor
 from ulp import ULP
 
+bail = False
+
 try:
     import wifi
 except MemoryError:
     import microcontroller
 
     print("MemoryError importing wifi module, resetting microcontroller...")
+    bail = True
     microcontroller.reset()
 
 
@@ -79,4 +82,5 @@ def main():
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
 
 
-main()
+if not bail:
+    main()
