@@ -19,6 +19,7 @@ supervisor.runtime.autoreload = False
 ulp = ULP()
 sensors = Sensors(ulp.shared_memory)
 
+
 def init_wifi():
     wifi.radio.connect(WIFI_SSID, WIFI_PASS)
 
@@ -28,8 +29,11 @@ def set_time():
     ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
     rtc.RTC().datetime = ntp.datetime
 
+
 def log(*args, **kwargs):
-    if DEBUG: print(*args, **kwargs)
+    if DEBUG:
+        print(*args, **kwargs)
+
 
 def init():
     # We don't use the second LDO, disable it to save power
@@ -59,6 +63,7 @@ def update():
     else:
         Display().update(datetime.now())
 
+
 def main():
     if alarm.wake_alarm == None:
         log("No wake alarm, initializing...")
@@ -69,5 +74,6 @@ def main():
 
     log("Entering deep sleep at", datetime.now())
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
+
 
 main()

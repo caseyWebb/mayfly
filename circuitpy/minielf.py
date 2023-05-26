@@ -11,17 +11,30 @@ class StructMixin:
     def frombuffer(cls, buf):
         return cls(*struct.unpack(cls._fmt, buf))
 
-_ElfHeader32 = namedtuple('_ElfHeader32', """
-    e_ident e_type e_machine e_version e_entry e_phoff e_shoff e_flags e_ehsize e_phentsize e_phnum e_shentsize e_shnum e_shstrndx""".split())
-class ElfHeader32(_ElfHeader32, StructMixin):
-    _fmt='<16s2h5l6h'
 
-_SectionHeader32 = namedtuple('_SectionHeader32', """
+_ElfHeader32 = namedtuple(
+    "_ElfHeader32",
+    """
+    e_ident e_type e_machine e_version e_entry e_phoff e_shoff e_flags e_ehsize e_phentsize e_phnum e_shentsize e_shnum e_shstrndx""".split(),
+)
+
+
+class ElfHeader32(_ElfHeader32, StructMixin):
+    _fmt = "<16s2h5l6h"
+
+
+_SectionHeader32 = namedtuple(
+    "_SectionHeader32",
+    """
         sh_name sh_type sh_flags sh_addr sh_offset sh_size sh_link sh_info
         sh_addralign sh_entsize
-        """.split())
+        """.split(),
+)
+
+
 class SectionHeader32(_SectionHeader32, StructMixin):
-    _fmt = '<10l'
+    _fmt = "<10l"
+
 
 class Section:
     def __init__(self, ef, sh):
@@ -30,15 +43,17 @@ class Section:
 
     def readat(self, offset, sz):
         return self._elffile.pread(offset + self._header.sh_offset, sz)
+
     def constructat(self, offset, cls):
         return self._elffile.construct_at(offset + self._header.sh_offset, cls)
 
+
 class StringTable(Section):
     def symbolat(self, offset):
-        result = b''
+        result = b""
         stream = self._elffile.stream
         stream.seek(self._header.sh_offset + offset)
-        while (c := stream.read(1)) != b'\0' and c != b'':
+        while (c := stream.read(1)) != b"\0" and c != b"":
             result += c
         return result
 
@@ -46,21 +61,29 @@ class StringTable(Section):
         stream = self._elffile.stream
         stream.seek(self._header.sh_offset + offset)
         name1 = stream.read(len(name))
-        if name1 != name: return False
+        if name1 != name:
+            return False
         nul = stream.read(1)
-        if nul != b'\0': return False
+        if nul != b"\0":
+            return False
         return True
-        
-_SymbolTableEntry = namedtuple('_SymbolTableEntry',
-        ['st_name', 'st_value', 'st_size', 'set_info', 'st_other', 'st_shndx'])
+
+
+_SymbolTableEntry = namedtuple(
+    "_SymbolTableEntry",
+    ["st_name", "st_value", "st_size", "set_info", "st_other", "st_shndx"],
+)
+
 
 class SymbolTableEntry(_SymbolTableEntry, StructMixin):
-    _fmt = '<3l2bh'
+    _fmt = "<3l2bh"
+
 
 class Symbol:
     def __init__(self, name, entry):
         self.name = name
         self.entry = entry
+
 
 class SymbolTable(Section):
     def __init__(self, ef, sh):
@@ -72,9 +95,10 @@ class SymbolTable(Section):
             yield self.constructat(i, SymbolTableEntry)
 
     def get_first_symbol_by_name(self, name):
-        if not isinstance(name, bytes): name = name.encode()
+        if not isinstance(name, bytes):
+            name = name.encode()
         if self.strtab is None:
-            self.strtab = self._elffile.get_section_by_name('.strtab')
+            self.strtab = self._elffile.get_section_by_name(".strtab")
         strtab = self.strtab
         for sy in self.iter_symbols():
             if strtab.symbolat_matches(sy.st_name, name):
@@ -82,25 +106,38 @@ class SymbolTable(Section):
 
 
 section_constructors = {
-        2: SymbolTable,
-        3: StringTable,
+    2: SymbolTable,
+    3: StringTable,
 }
 
-_HeaderTableEntry = namedtuple('_HeaderTableEntry',
-        ['p_type', 'p_offset', 'p_vaddr', 'p_paddr', 'p_filesz', 'p_memsz', 'p_flags', 'p_align'])
+_HeaderTableEntry = namedtuple(
+    "_HeaderTableEntry",
+    [
+        "p_type",
+        "p_offset",
+        "p_vaddr",
+        "p_paddr",
+        "p_filesz",
+        "p_memsz",
+        "p_flags",
+        "p_align",
+    ],
+)
 
 PT_LOAD = 1
 
+
 class HeaderTableEntry(_HeaderTableEntry, StructMixin):
-    _fmt = '<8l'
+    _fmt = "<8l"
+
 
 class ELFFile:
     def __init__(self, stream):
         self.stream = stream
         self._buffer = ()
-        if self.pread(0, 4) != b'\177ELF':
+        if self.pread(0, 4) != b"\177ELF":
             raise ValueError("Not an ELF file")
-        if self.pread(4, 3) != b'\1\1\1':
+        if self.pread(4, 3) != b"\1\1\1":
             raise ValueError("Incompatible ELF file")
         self._header = self.construct_at(0, ElfHeader32)
 
@@ -131,7 +168,8 @@ class ELFFile:
             yield self.get_section(i)
 
     def get_section_by_name(self, name):
-        if not isinstance(name, bytes): name = name.encode()
+        if not isinstance(name, bytes):
+            name = name.encode()
         idx = self.get_section(self._header.e_shstrndx)
         for sec in self.iter_sections():
             off = sec._header.sh_name

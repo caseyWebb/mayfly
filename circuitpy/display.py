@@ -15,6 +15,7 @@ SMALL_FONT = bitmap_font.load_font("/font/UpheavalTT-BRK--16.bdf")
 EPD_CS = board.D5
 EPD_DC = board.D6
 
+
 class Display:
     def __init__(self):
         displayio.release_displays()
@@ -47,7 +48,13 @@ class Display:
         Display.__add_text_to_group(g, "Temp (Air): 25C", 20, 75)
         Display.__add_text_to_group(g, "Temp (Water): 25C", 20, 105)
         Display.__add_text_to_group(g, "Last updated:", 160, 15, SMALL_FONT)
-        Display.__add_text_to_group(g, f'{updated_at.month}/{updated_at.day} {updated_at.hour}:{updated_at.minute:02}', 160, 30, SMALL_FONT)
+        Display.__add_text_to_group(
+            g,
+            f"{updated_at.month}/{updated_at.day} {updated_at.hour}:{updated_at.minute:02}",
+            160,
+            30,
+            SMALL_FONT,
+        )
 
         self.__display.show(g)
         self.__display.refresh()
@@ -58,5 +65,3 @@ class Display:
         text_area = label.Label(text=text, font=font, color=FOREGROUND_COLOR)
         text_group.append(text_area)
         group.append(text_group)
-
-
