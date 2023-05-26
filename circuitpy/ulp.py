@@ -17,7 +17,6 @@ class ULP:
 
     def start(self):
         self.__program.halt()
-        self.shared_memory.set_uint8('initialized', 0)
         self.__program.run(
             self.__code,
             pins=[board.IO14, board.IO18],

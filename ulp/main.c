@@ -22,6 +22,12 @@
 #define ULP_RISCV_CYCLES_PER_MS (int)(1000 * ULP_RISCV_CYCLES_PER_US)
 
 /**
+ * Wake-up thresholds
+ */
+// DS18B20 returns temperature in 1/16ths of a degree C, wake every 0.5C
+#define DS18B20_THRESHOLD 8
+
+/**
  * GPIO
  */
 #define ANALOG_SENSORS_ENABLE_PIN GPIO_NUM_0
@@ -37,6 +43,7 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
+EXPORT volatile bool modified;
 EXPORT volatile uint8_t pH_0x00;
 EXPORT volatile uint8_t pH_0x01;
 EXPORT volatile uint8_t DO_0x00;
@@ -46,8 +53,11 @@ EXPORT volatile uint8_t air_temp_0x01;
 EXPORT volatile uint8_t water_temp_0x00;
 EXPORT volatile uint8_t water_temp_0x01;
 
-EXPORT volatile bool initialized;
-EXPORT volatile bool modified;
+void convert_uint16_to_uint8(uint32_t input, volatile uint8_t bytes[2])
+{
+    bytes[0] = input & 0xFF;
+    bytes[1] = (input >> 8) & 0xFF;
+}
 
 void sleep_us(uint32_t us)
 {
@@ -59,37 +69,17 @@ void sleep_ms(uint32_t ms)
 }
 
 /**
- * Helpers for converting between 8-bit and 16-bit integers.
- */
-void convert_uint16_to_uint8(uint32_t input, uint8_t bytes[2])
-{
-    for (int i = 0; i < 2; i++)
-    {
-        bytes[i] = (input >> (i * 8)) & 0xff;
-    }
-}
-uint16_t convert_uint8_to_uint16(uint8_t bytes[2])
-{
-    uint16_t output = 0;
-    for (int i = 0; i < 2; i++)
-    {
-        output |= bytes[i] << (i * 8);
-    }
-    return output;
-}
-
-/**
  * Shared memory helpers
  */
-void maybe_update_sensor_reading(uint16_t new_reading, uint8_t threshold, volatile uint8_t *msb, volatile uint8_t *lsb)
+void maybe_update_sensor_reading(uint16_t new_reading, uint8_t threshold, volatile uint8_t *low_byte, volatile uint8_t *high_byte)
 {
-    uint16_t last_reading = convert_uint8_to_uint16((uint8_t[]){*msb, *lsb});
-    if (abs(new_reading - last_reading) > threshold)
+    uint8_t bytes[2];
+    convert_uint16_to_uint8(new_reading, bytes);
+    // Thresholds are below 255, so only need to check low byte
+    if (abs(*low_byte - bytes[0]) > threshold)
     {
-        uint8_t bytes[2];
-        convert_uint16_to_uint8(new_reading, bytes);
-        *msb = bytes[0];
-        *lsb = bytes[1];
+        *low_byte = bytes[0];
+        *high_byte = bytes[1];
         modified = true;
     }
 }
@@ -197,26 +187,47 @@ bool onewire_reset(void)
 
     return presence_pulse;
 }
-void onewire_match_rom(uint8_t *onewire_address)
+bool onewire_match_rom(uint8_t *onewire_address)
 {
     if (!onewire_reset())
     {
-        return;
+        return false;
     }
     onewire_write_byte(MATCH_ROM);
     for (int i = 0; i < 8; i++)
     {
         onewire_write_byte(onewire_address[i]);
     }
+    return true;
 }
-void onewire_convert_t()
+bool onewire_convert_t()
 {
     if (!onewire_reset())
     {
-        return;
+        return false;
     }
     onewire_write_byte(SKIP_ROM);
     onewire_write_byte(CONVERT_T);
+    return true;
+}
+uint8_t crc8(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < len; i++)
+    {
+        uint8_t inbyte = data[i];
+        for (uint8_t j = 0; j < 8; j++)
+        {
+            uint8_t mix = (crc ^ inbyte) & 0x01;
+            crc >>= 1;
+            if (mix)
+            {
+                crc ^= 0x8C;
+            }
+            inbyte >>= 1;
+        }
+    }
+    return crc;
 }
 void init_onewire()
 {
@@ -228,14 +239,30 @@ void init_onewire()
     ulp_riscv_gpio_pulldown_disable(ONEWIRE_BUS);
 }
 
-void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *msb, volatile uint8_t *lsb)
+void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *low_byte, volatile uint8_t *high_byte)
 {
-    onewire_match_rom(onewire_address);
+    if (!onewire_match_rom(onewire_address))
+    {
+        return;
+    };
     onewire_write_byte(READ_SCRATCHPAD);
-    uint8_t temp_low_byte = onewire_read_byte();
-    uint8_t temp_high_byte = onewire_read_byte();
-    uint16_t temp = (temp_high_byte << 8) | temp_low_byte;
-    maybe_update_sensor_reading(temp, 20, msb, lsb);
+    uint8_t scratchpad[9];
+    for (int i = 0; i < 9; i++)
+    {
+        scratchpad[i] = onewire_read_byte();
+    }
+    uint8_t crc = crc8(scratchpad, 8);
+    if (crc != scratchpad[8])
+    {
+        return;
+    }
+    uint16_t temp = (scratchpad[1] << 8) | scratchpad[0];
+    // Even checking the crc junk values are read sometimes and cause premature wakeups
+    if (temp == 0)
+    {
+        return;
+    }
+    maybe_update_sensor_reading(temp, DS18B20_THRESHOLD, low_byte, high_byte);
 }
 
 /**
@@ -244,13 +271,10 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *m
 
 int main(void)
 {
-    if (!initialized)
-    {
-        // init_analog_sensors();
-        init_onewire();
-    }
+    // init_analog_sensors();
+    init_onewire();
 
-    onewire_convert_t();
+    bool onewire_convert_t_success = onewire_convert_t();
     // enable_analog_sensors();
 
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
@@ -258,17 +282,24 @@ int main(void)
 
     // update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
     // update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
-    disable_analog_sensors();
+    // disable_analog_sensors();
 
-    update_onewire_sensor_reading(AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
-    update_onewire_sensor_reading(WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
-
-    if (!initialized || modified)
+    if (onewire_convert_t_success)
     {
-        // initialized = true;
+        update_onewire_sensor_reading(AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
+        update_onewire_sensor_reading(WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
+    }
+
+    if (modified)
+    {
         modified = false;
         ulp_riscv_wakeup_main_processor();
     }
+
+    // Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
+    // so set the timer register directly. This is less precise and readable, but ends up being
+    // about 3 minutes which is perfect for the EPD refresh rate.
+    REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
 
     return 0;
 }
