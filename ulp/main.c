@@ -8,6 +8,8 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
+#define DEBUG true
+
 #define EXPORT __attribute__((used, visibility("default")))
 
 /**
@@ -44,6 +46,7 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
 EXPORT volatile bool modified;
+EXPORT volatile bool paused;
 EXPORT volatile uint8_t pH_0x00;
 EXPORT volatile uint8_t pH_0x01;
 EXPORT volatile uint8_t DO_0x00;
@@ -117,6 +120,11 @@ void update_analog_sensor_reading(adc_channel_t adc_channel, volatile uint8_t *m
 
 /**
  * OneWire
+ *
+ * This is based on the example in the ESP-IDF docs, modified to support
+ * multiple devices on the same bus.
+ *
+ * https://github.com/espressif/esp-idf/blob/master/examples/system/ulp_riscv/ds18b20_onewire/main/ulp/main.c
  */
 #define SKIP_ROM 0xCC
 #define MATCH_ROM 0x55
@@ -128,29 +136,20 @@ static void onewire_write_bit(bool bit)
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 0);
     if (bit)
     {
-        /* Must pull high within 15 us, without delay this takes 5 us */
         ulp_riscv_gpio_output_level(ONEWIRE_BUS, 1);
     }
 
-    /* Write slot duration at least 60 us */
     sleep_us(60);
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 1);
 }
 static bool onewire_read_bit(void)
 {
     bool bit;
-
-    /* Pull low minimum 1 us */
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 0);
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 1);
-
-    /* Must sample within 15 us of the failing edge */
     sleep_us(5);
     bit = ulp_riscv_gpio_get_level(ONEWIRE_BUS);
-
-    /* Read slot duration at least 60 us */
     sleep_us(55);
-
     return bit;
 }
 static void onewire_write_byte(uint8_t data)
@@ -172,19 +171,12 @@ static uint8_t onewire_read_byte(void)
 bool onewire_reset(void)
 {
     bool presence_pulse;
-    /* min 480 us reset pulse + 480 us reply time is specified by datasheet */
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 0);
-
     sleep_us(480);
-
     ulp_riscv_gpio_output_level(ONEWIRE_BUS, 1);
-
-    /* Wait for ds18b20 to pull low before sampling */
     sleep_us(60);
     presence_pulse = ulp_riscv_gpio_get_level(ONEWIRE_BUS) == 0;
-
     sleep_us(420);
-
     return presence_pulse;
 }
 bool onewire_match_rom(uint8_t *onewire_address)
@@ -257,11 +249,6 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
         return;
     }
     uint16_t temp = (scratchpad[1] << 8) | scratchpad[0];
-    // Even checking the crc junk values are read sometimes and cause premature wakeups
-    if (temp == 0)
-    {
-        return;
-    }
     maybe_update_sensor_reading(temp, DS18B20_THRESHOLD, low_byte, high_byte);
 }
 
@@ -290,16 +277,39 @@ int main(void)
         update_onewire_sensor_reading(WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
     }
 
-    if (modified)
+    /**
+     * During development a short duty cycle and checking "modified" in the serial console
+     * is an awful lot nicer than manually manipulating sensors and waiting 3 minutes between
+     * (possible) EPD refreshes.
+     *
+     * To do that, we need to pause the ULP and wait for the main processor to
+     * read the value of modified before setting it back to false.
+     */
+    if (DEBUG)
     {
-        modified = false;
+        paused = true;
         ulp_riscv_wakeup_main_processor();
+        while (paused)
+        {
+            sleep_ms(750);
+        };
+    }
+    /**
+     * In production no need to read modified from the main processor so resume immediately
+     */
+    else if (modified)
+    {
+        ulp_riscv_wakeup_main_processor();
+
+        /*
+         * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
+         * so set the timer register directly. This is less precise and readable, but ends up being
+         * about 3 minutes which is perfect for the EPD refresh rate.
+         */
+        REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
     }
 
-    // Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
-    // so set the timer register directly. This is less precise and readable, but ends up being
-    // about 3 minutes which is perfect for the EPD refresh rate.
-    REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
+    modified = false;
 
     return 0;
 }

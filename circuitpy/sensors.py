@@ -27,3 +27,7 @@ class Sensors:
     @property
     def water_temp(self):
         return self.__shared_memory.read_uint16('water_temp') / 16.0
+    
+    @property
+    def modified(self):
+        return self.__shared_memory.read_bool('modified')

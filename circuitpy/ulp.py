@@ -1,7 +1,8 @@
-import board
 import espulp
 import minielf
 import memorymap
+
+from pins import ULP_ADC_PIN, ULP_GPIO_PINS
 
 class ULP:
     def __init__(self):
@@ -19,15 +20,26 @@ class ULP:
         self.__program.halt()
         self.__program.run(
             self.__code,
-            pins=[board.IO14, board.IO18],
-            adc_pin=board.A10
+            pins=ULP_GPIO_PINS,
+            adc_pin=ULP_ADC_PIN
         )
-
+    
+    # See the comment in the last block of ULP.c#main
+    def resume(self):
+        self.shared_memory.set_bool('paused', False)
 
 class SharedMemory:
     def __init__(self, memory_map, symtab):
         self.__memory_map = memory_map
         self.__symtab = symtab
+    
+    def read_bool(self, name):
+        symbol = self.__get_symbol(name)
+        return self.__memory_map[symbol] != 0
+    
+    def set_bool(self, name, value):
+        symbol = self.__get_symbol(name)
+        self.__memory_map[symbol] = 1 if value else 0
 
     def read_uint16(self, name):
         output = 0

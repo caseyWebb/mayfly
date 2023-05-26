@@ -49,6 +49,9 @@ def update():
     # print("DO:", sensors.DO)
     print("Air temp:", sensors.air_temp)
     print("Water temp:", sensors.water_temp)
+    print("Modified:", sensors.modified)
+    
+    ulp.resume()
 
     # print("Updating display...", end=" ")
     # Display().update(datetime.now())
