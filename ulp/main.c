@@ -8,7 +8,7 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
-#define DEBUG true
+#define DEBUG false
 
 #define EXPORT __attribute__((used, visibility("default")))
 
@@ -26,8 +26,24 @@
 /**
  * Wake-up thresholds
  */
+
 // DS18B20 returns temperature in 1/16ths of a degree C, wake every 0.5C
 #define DS18B20_THRESHOLD 8
+
+// Wake every 0.1 pH
+//
+// pH = (-5.6548 * mV / 1000) + 15.509
+// mV = (pH - 15.509) * (1000 / -5.6548)
+// ΔmV = (0.1) * (1000 / -5.6548)
+// ΔmV = 17.69
+//
+// mV approx = raw ADC value / 3
+// 17.69 * 3 = 53.07
+#define PH_THRESHOLD 60
+
+// This one is harder to do precisely since it depends on temperature
+// but this is a good happy medium for approx 1% saturation accuracy
+#define DO_THRESHOLD 20
 
 /**
  * GPIO
