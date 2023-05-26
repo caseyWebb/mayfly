@@ -2,7 +2,7 @@ import espulp
 import minielf
 import memorymap
 
-from pins import ULP_ADC_PIN, ULP_GPIO_PINS
+from pins import ULP_ADC_PINS, ULP_GPIO_PINS
 
 
 class ULP:
@@ -19,7 +19,7 @@ class ULP:
 
     def start(self):
         self.__program.halt()
-        self.__program.run(self.__code, pins=ULP_GPIO_PINS, adc_pin=ULP_ADC_PIN)
+        self.__program.run(self.__code, pins=ULP_GPIO_PINS, adc_pins=ULP_ADC_PINS)
 
     # See the comment in the last block of ULP.c#main
     def resume(self):

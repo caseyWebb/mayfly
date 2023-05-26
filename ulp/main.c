@@ -274,7 +274,7 @@ void init_ulp_wakeup_period()
 
 void init()
 {
-    // init_analog_sensors();
+    init_analog_sensors();
     init_onewire();
     init_ulp_wakeup_period();
     initialized = true;
@@ -283,15 +283,15 @@ void init()
 void update()
 {
 
-    // enable_analog_sensors();
+    enable_analog_sensors();
     bool onewire_convert_t_success = onewire_convert_t();
 
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
     sleep_ms(750);
 
-    // update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
-    // update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
-    // disable_analog_sensors();
+    update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
+    update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
+    disable_analog_sensors();
 
     if (onewire_convert_t_success)
     {
