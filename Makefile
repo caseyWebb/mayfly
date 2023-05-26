@@ -41,6 +41,14 @@ SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/start.S
 flash: circuitpy/ulp.bin /Volumes/CIRCUITPY
 	rsync -avhP --delete circuitpy/ /Volumes/CIRCUITPY
 
+.PHONY: flash-diff
+flash-diff: circuitpy/ulp.bin /Volumes/CIRCUITPY
+	git diff --name-only circuitpy | xargs -I{} cp {} /Volumes/CIRCUITPY
+
+.PHONY: flash-ulp
+flash-ulp: circuitpy/ulp.bin /Volumes/CIRCUITPY
+	cp circuitpy/ulp.bin /Volumes/CIRCUITPY
+
 build:
 	mkdir -p build
 
