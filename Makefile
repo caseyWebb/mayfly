@@ -28,6 +28,10 @@ CFLAGS += -isystem ulp/include
 CFLAGS += -DCOPROC_RESERVE_MEM=$(COPROC_RESERVE_MEM)
 CFLAGS += -DCONFIG_IDF_TARGET_ESP32S2
 
+ifeq ($(DEBUG),1)
+CFLAGS += -DDEBUG
+endif
+
 LDFLAGS := -Wl,-A,elf32-esp32s2ulp -nostdlib --specs=nano.specs --specs=nosys.specs -Wl,--gc-sections
 LDFLAGS += -Wl,-T,build/ulp.ld
 

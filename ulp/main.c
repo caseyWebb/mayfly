@@ -8,8 +8,6 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
-#define DEBUG false
-
 #define EXPORT __attribute__((used, visibility("default")))
 
 /**
@@ -30,20 +28,19 @@
 // DS18B20 returns temperature in 1/16ths of a degree C, wake every 0.5C
 #define DS18B20_THRESHOLD 8
 
-// Wake every 0.1 pH
+// Wake every 0.15 pH
 //
 // pH = (-5.6548 * mV / 1000) + 15.509
 // mV = (pH - 15.509) * (1000 / -5.6548)
-// ΔmV = (0.1) * (1000 / -5.6548)
-// ΔmV = 17.69
-//
-// mV approx = raw ADC value / 3
-// 17.69 * 3 = 53.07
-#define PH_THRESHOLD 60
+// ΔmV = (0.15) * (1000 / -5.6548)
+// ΔmV = 26.5
+// mV approx = raw ADC value / 3.19
+// ΔADC = 26.5 * 3.19 = 84.535
+#define PH_THRESHOLD 85
 
 // This one is harder to do precisely since it depends on temperature
-// but this is a good happy medium for approx 1% saturation accuracy
-#define DO_THRESHOLD 20
+// but this is a good happy medium without causing unnecessary wake-ups
+#define DO_THRESHOLD 60
 
 /**
  * GPIO
@@ -61,6 +58,11 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
+#ifdef DEBUG
+EXPORT volatile bool debug = true;
+#else
+EXPORT volatile bool debug = false;
+#endif
 EXPORT volatile bool initialized;
 EXPORT volatile bool modified;
 EXPORT volatile bool paused;
@@ -276,10 +278,9 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
 
 void init_ulp_wakeup_period()
 {
-    if (DEBUG)
-    {
-        return;
-    }
+#ifdef DEBUG
+    return;
+#endif
     /*
      * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
      * so set the timer register directly. This is less precise and readable, but ends up being
@@ -315,30 +316,30 @@ void update()
         update_onewire_sensor_reading(WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
     }
 
-    /**
-     * During development a short duty cycle and checking "modified" in the serial console
-     * is an awful lot nicer than manually manipulating sensors and waiting 3 minutes between
-     * (possible) EPD refreshes.
-     *
-     * To do that, we need to pause the ULP and wait for the main processor to
-     * read the value of modified before setting it back to false.
-     */
-    if (DEBUG)
+/**
+ * During development a short duty cycle and checking "modified" in the serial console
+ * is an awful lot nicer than manually manipulating sensors and waiting 3 minutes between
+ * (possible) EPD refreshes.
+ *
+ * To do that, we need to pause the ULP and wait for the main processor to
+ * read the value of modified before setting it back to false.
+ */
+#ifdef DEBUG
+    paused = true;
+    ulp_riscv_wakeup_main_processor();
+    while (paused)
     {
-        paused = true;
-        ulp_riscv_wakeup_main_processor();
-        while (paused)
-        {
-            sleep_ms(750);
-        };
-    }
+        sleep_ms(750);
+    };
+#else
     /**
      * In production no need to read modified from the main processor so resume immediately
      */
-    else if (modified)
+    if (modified)
     {
         ulp_riscv_wakeup_main_processor();
     }
+#endif
     modified = false;
 }
 
