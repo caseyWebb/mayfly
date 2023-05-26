@@ -8,6 +8,8 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
+#define DEBUG true
+
 #define EXPORT __attribute__((used, visibility("default")))
 
 /**
@@ -43,7 +45,6 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
-EXPORT volatile bool debug;
 EXPORT volatile bool initialized;
 EXPORT volatile bool modified;
 EXPORT volatile bool paused;
@@ -257,14 +258,30 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
  * Business logic
  */
 
-int main(void)
+void init_ulp_wakeup_period()
 {
-    if (!initialized)
+    if (DEBUG)
     {
-        // init_analog_sensors();
-        init_onewire();
-        initialized = true;
+        return;
     }
+    /*
+     * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
+     * so set the timer register directly. This is less precise and readable, but ends up being
+     * about 3 minutes which is perfect for the EPD refresh rate.
+     */
+    REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
+}
+
+void init()
+{
+    // init_analog_sensors();
+    init_onewire();
+    init_ulp_wakeup_period();
+    initialized = true;
+}
+
+void update()
+{
 
     // enable_analog_sensors();
     bool onewire_convert_t_success = onewire_convert_t();
@@ -290,7 +307,7 @@ int main(void)
      * To do that, we need to pause the ULP and wait for the main processor to
      * read the value of modified before setting it back to false.
      */
-    if (debug)
+    if (DEBUG)
     {
         paused = true;
         ulp_riscv_wakeup_main_processor();
@@ -305,16 +322,16 @@ int main(void)
     else if (modified)
     {
         ulp_riscv_wakeup_main_processor();
-
-        /*
-         * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
-         * so set the timer register directly. This is less precise and readable, but ends up being
-         * about 3 minutes which is perfect for the EPD refresh rate.
-         */
-        REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
     }
-
     modified = false;
+}
 
+int main(void)
+{
+    if (!initialized)
+    {
+        init();
+    }
+    update();
     return 0;
 }

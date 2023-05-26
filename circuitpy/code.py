@@ -11,12 +11,12 @@ import supervisor
 from ulp import ULP
 import wifi
 
-DEBUG = True 
+DEBUG = True
 
 # Auto-reload and the ULP is a bad time. Use serial communication or hardware to reset.
 supervisor.runtime.autoreload = False
 
-ulp = ULP(DEBUG)
+ulp = ULP()
 sensors = Sensors(ulp.shared_memory)
 
 def init_wifi():
@@ -29,7 +29,7 @@ def set_time():
     rtc.RTC().datetime = ntp.datetime
 
 def log(*args, **kwargs):
-    if DEBUG: print("[main]", *args, **kwargs)
+    if DEBUG: print(*args, **kwargs)
 
 def init():
     # We don't use the second LDO, disable it to save power
