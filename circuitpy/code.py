@@ -11,10 +11,12 @@ import supervisor
 from ulp import ULP
 import wifi
 
+DEBUG = True 
+
 # Auto-reload and the ULP is a bad time. Use serial communication or hardware to reset.
 supervisor.runtime.autoreload = False
 
-ulp = ULP()
+ulp = ULP(DEBUG)
 sensors = Sensors(ulp.shared_memory)
 
 def init_wifi():
@@ -26,46 +28,46 @@ def set_time():
     ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
     rtc.RTC().datetime = ntp.datetime
 
+def log(*args, **kwargs):
+    if DEBUG: print("[main]", *args, **kwargs)
 
 def init():
     # We don't use the second LDO, disable it to save power
     ldo2.disable()
 
-    print("Initializing WiFi...", end=" ")
+    log("Initializing WiFi...", end=" ")
     init_wifi()
-    print("Done!")
+    log("Done!")
 
-    print("Setting time...", end=" ")
+    log("Setting time...", end=" ")
     set_time()
-    print("Done!")
+    log("Done!")
 
-    print("Starting ULP...", end=" ")
+    log("Starting ULP...", end=" ")
     ulp.start()
-    print("Done!")
+    log("Done!")
 
 
 def update():
-    # print("pH:", sensors.pH)
-    # print("DO:", sensors.DO)
-    print("Air temp:", sensors.air_temp)
-    print("Water temp:", sensors.water_temp)
-    print("Modified:", sensors.modified)
-    
-    ulp.resume()
-
-    # print("Updating display...", end=" ")
-    # Display().update(datetime.now())
-    # print("Done!")
+    if DEBUG:
+        log("pH:", sensors.pH)
+        log("DO:", sensors.DO)
+        log("Air temp:", sensors.air_temp)
+        log("Water temp:", sensors.water_temp)
+        log("Modified:", sensors.modified)
+        ulp.resume()
+    else:
+        Display().update(datetime.now())
 
 def main():
     if alarm.wake_alarm == None:
-        print("No wake alarm, initializing...")
+        log("No wake alarm, initializing...")
         init()
     else:
-        print("ULP requested wake up at", datetime.now())
+        log("ULP requested wake up at", datetime.now())
         update()
 
-    print("Entering deep sleep at", datetime.now())
+    log("Entering deep sleep at", datetime.now())
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
 
 main()

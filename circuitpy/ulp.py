@@ -5,7 +5,7 @@ import memorymap
 from pins import ULP_ADC_PIN, ULP_GPIO_PINS
 
 class ULP:
-    def __init__(self):
+    def __init__(self, debug):
         elf = minielf.ELFFile(open("/ulp.bin", "rb"))
         code_header = elf.get_header_by_type(minielf.PT_LOAD)
         self.__code = bytes(elf.pread(code_header.p_offset, code_header.p_filesz))
@@ -15,6 +15,8 @@ class ULP:
 
         self.alarm = espulp.ULPAlarm(self.__program)
         self.shared_memory = SharedMemory(self.__memory_map, self.__symtab)
+        
+        if debug: self.shared_memory.set_bool('debug', debug)
 
     def start(self):
         self.__program.halt()

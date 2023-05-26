@@ -8,8 +8,6 @@
 #include "ulp_riscv_utils.h"
 #include "ulp_riscv_gpio.h"
 
-#define DEBUG true
-
 #define EXPORT __attribute__((used, visibility("default")))
 
 /**
@@ -45,6 +43,7 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
+EXPORT volatile bool debug;
 EXPORT volatile bool initialized;
 EXPORT volatile bool modified;
 EXPORT volatile bool paused;
@@ -291,7 +290,7 @@ int main(void)
      * To do that, we need to pause the ULP and wait for the main processor to
      * read the value of modified before setting it back to false.
      */
-    if (DEBUG)
+    if (debug)
     {
         paused = true;
         ulp_riscv_wakeup_main_processor();
