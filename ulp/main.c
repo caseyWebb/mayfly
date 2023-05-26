@@ -45,6 +45,7 @@ static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x2
  *
  * See convert_uint16_to_uint8 below and __get_uint16 in ulp.py
  */
+EXPORT volatile bool initialized;
 EXPORT volatile bool modified;
 EXPORT volatile bool paused;
 EXPORT volatile uint8_t pH_0x00;
@@ -246,6 +247,7 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
     uint8_t crc = crc8(scratchpad, 8);
     if (crc != scratchpad[8])
     {
+        maybe_update_sensor_reading(0, DS18B20_THRESHOLD, low_byte, high_byte);
         return;
     }
     uint16_t temp = (scratchpad[1] << 8) | scratchpad[0];
@@ -258,11 +260,15 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
 
 int main(void)
 {
-    // init_analog_sensors();
-    init_onewire();
+    if (!initialized)
+    {
+        // init_analog_sensors();
+        init_onewire();
+        initialized = true;
+    }
 
-    bool onewire_convert_t_success = onewire_convert_t();
     // enable_analog_sensors();
+    bool onewire_convert_t_success = onewire_convert_t();
 
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
     sleep_ms(750);
