@@ -1,45 +1,22 @@
-from adafruit_datetime import datetime
-import alarm
-from secrets import WIFI_SSID, WIFI_PASS, TZ_OFFSET
-import supervisor
-from ulp import ULP
-
-bail = False
-
-try:
-    import wifi
-except MemoryError:
-    import microcontroller
-
-    print("MemoryError importing wifi module, resetting microcontroller...")
-    bail = True
-    microcontroller.reset()
-
-
 def init(ulp):
-    def init_wifi():
-        wifi.radio.connect(WIFI_SSID, WIFI_PASS)
-
-    def set_time():
-        import adafruit_ntp
-        import rtc
-        import socketpool
-
-        pool = socketpool.SocketPool(wifi.radio)
-        ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
-        rtc.RTC().datetime = ntp.datetime
-
+    import adafruit_ntp
     import ldo2 as ldo2
+    import rtc
+    from secrets import WIFI_SSID, WIFI_PASS, TZ_OFFSET
+    import socketpool
+    import wifi
 
     # We don't use the second LDO, disable it to save power
     ldo2.disable()
 
     print("Initializing WiFi...", end=" ")
-    init_wifi()
+    wifi.radio.connect(WIFI_SSID, WIFI_PASS)
     print("Done!")
 
     print("Setting time...", end=" ")
-    set_time()
+    pool = socketpool.SocketPool(wifi.radio)
+    ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
+    rtc.RTC().datetime = ntp.datetime
     print("Done!")
 
     print("Starting ULP...", end=" ")
@@ -50,8 +27,22 @@ def init(ulp):
 def update(ulp):
     from display import Display
     from sensors import Sensors
+    import socketpool
+    import adafruit_minimqtt.adafruit_minimqtt as MQTT
+    import wifi
 
+    mqtt_topic = "mayfly/backyard"
+    pool = socketpool.SocketPool(wifi.radio)
     sensors = Sensors(ulp.shared_memory)
+
+    def on_connect(client, userdata, flags, rc):
+        print("Connected to MQTT broker!")
+
+    def on_disconnect(client, userdata, rc):
+        print("Disconnected from MQTT broker!")
+
+    def on_publish(client, userdata, topic, pid):
+        print(f"Published to {topic} with PID {pid}!")
 
     if ulp.shared_memory.read_bool("debug"):
         print("pH:", sensors.pH)
@@ -65,7 +56,12 @@ def update(ulp):
         Display().update(datetime.now(), sensors)
 
 
-def main():
+try:
+    from adafruit_datetime import datetime
+    import alarm
+    from ulp import ULP
+    import supervisor
+
     # Auto-reload and the ULP is a bad time. Use serial communication or hardware to reset.
     supervisor.runtime.autoreload = False
 
@@ -80,7 +76,8 @@ def main():
 
     print("Entering deep sleep at", datetime.now())
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
+except:
+    import microcontroller
 
-
-if not bail:
-    main()
+    print("Exception encountered, resetting microcontroller...")
+    microcontroller.reset()
