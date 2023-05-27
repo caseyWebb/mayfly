@@ -31,8 +31,7 @@ def __ds18b20(raw):
     return raw / 16.0
 
 
-def __modified(shared_memory, var_name):
-    bit_mask = shared_memory.read_uint8(var_name)
+def __modified(bit_mask):
     return {
         "pH": bool(bit_mask & (1 << 0)),
         "DO": bool(bit_mask & (1 << 1)),
@@ -43,14 +42,12 @@ def __modified(shared_memory, var_name):
 
 class Sensors:
     def __init__(self, shared_memory):
-        self.air_temp = __ds18b20(shared_memory.read_uint16("air_temp"))
-        self.water_temp = __ds18b20(shared_memory.read_uint16("water_temp"))
-        self.pH = __pH(shared_memory.read_uint16("pH"))
-        self.DO_percent_saturation = __DO_percent_saturation(
-            shared_memory.read_uint16("DO")
-        )
+        self.air_temp = __ds18b20(shared_memory.air_temp)
+        self.water_temp = __ds18b20(shared_memory.water_temp)
+        self.pH = __pH(shared_memory.pH)
+        self.DO_percent_saturation = __DO_percent_saturation(shared_memory.DO)
         self.DO_mg_L = __DO_mg_L(self.water_temp, self.DO_percent_saturation)
-        self.modified = __modified(shared_memory, "modified")
+        self.modified = __modified(shared_memory.modified)
 
     # Binary format to send across the wire
     # 0x00: air_temp

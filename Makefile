@@ -41,17 +41,13 @@ SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/ulp_riscv_adc.c
 SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/ulp_riscv_utils.c
 SRCS += $(IDF_PATH)/components/ulp/ulp_riscv/ulp_core/start.S
 
+.PHONY: flash-all
+flash-all: circuitpy/lib /Volumes/CIRCUITPY
+	rsync -avhP --exclude secrets.py.example --delete circuitpy/ /Volumes/CIRCUITPY
+
 .PHONY: flash
-flash: circuitpy/ulp.bin /Volumes/CIRCUITPY
-	rsync -avhP --delete circuitpy/ /Volumes/CIRCUITPY
-
-.PHONY: flash-diff
-flash-diff: circuitpy/ulp.bin /Volumes/CIRCUITPY
-	git diff --name-only circuitpy | xargs -I{} cp {} /Volumes/CIRCUITPY
-
-.PHONY: flash-ulp
-flash-ulp: circuitpy/ulp.bin /Volumes/CIRCUITPY
-	cp circuitpy/ulp.bin /Volumes/CIRCUITPY
+flash: circuitpy/ulp.py /Volumes/CIRCUITPY
+	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete circuitpy/ /Volumes/CIRCUITPY
 
 build:
 	mkdir -p build
@@ -67,10 +63,10 @@ build/ulp.ld: ulp/link.ld build
 
 .PHONY: clean
 clean:
-	rm -f build/* circuitpy/ulp.bin 
+	rm -f build/* circuitpy/ulp.py 
 
-circuitpy/ulp.bin: build/ulp
-	cp $< $@
+circuitpy/ulp.py: build/ulp
+	python ./support/ulp_builder.py
 
 /Volumes/CIRCUITPY:
 	test -d /Volumes/CIRCUITPY

@@ -76,12 +76,11 @@ def update():
     )
     import adafruit_minimqtt.adafruit_minimqtt as MQTT
 
-    debug = ulp.shared_memory.read_bool("debug")
     display = Display()
     now = get_current_time()
     sensors = Sensors(ulp.shared_memory)
 
-    if debug:
+    if ulp.shared_memory.debug:
         print("Time:", now)
         print("pH:", sensors.pH)
         print("DO (mg/L):", sensors.DO_mg_L)
