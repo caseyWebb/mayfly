@@ -23,10 +23,20 @@ def get_wifi_connection(attempts=0):
         if attempts < 3:
             print("Exception encoutered:", e)
             print(f"Trying again ({++attempts}/3)")
-            return get_wifi_connection(attempts - 1)
+            return get_wifi_connection()
         else:
             print("Giving up!")
-            raise e
+            return None
+
+
+def get_current_time():
+    try:
+        from adafruit_datetime import datetime
+
+        return datetime.now()
+
+    except:
+        return None
 
 
 def init():
@@ -41,8 +51,11 @@ def init():
     ldo2.direction = Direction.OUTPUT
     ldo2.value = False
 
-    print("Setting time...", end=" ")
     pool = get_wifi_connection()
+    if pool is None:
+        return
+
+    print("Setting time...", end=" ")
     ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
     rtc.RTC().datetime = ntp.datetime
     print("Done!")
@@ -65,7 +78,7 @@ def update():
 
     debug = ulp.shared_memory.read_bool("debug")
     display = Display()
-    now = datetime.now()
+    now = get_current_time()
     sensors = Sensors(ulp.shared_memory)
 
     if debug:
@@ -81,6 +94,9 @@ def update():
         display.update(now, sensors)
 
     pool = get_wifi_connection()
+    if pool is None:
+        return
+
     mqtt = MQTT.MQTT(
         broker=MQTT_BROKER,
         port=MQTT_PORT,

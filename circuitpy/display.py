@@ -47,13 +47,14 @@ class Display:
         DO = f"DO: {sensors.DO_percent_saturation:.0f}% ({sensors.DO_mg_L:.1f} mg/L)"
         air_temp = f"Temp (Air): {sensors.air_temp:.0f}C"
         water_temp = f"Temp (Water): {sensors.water_temp:.0f}C"
-        updated = f"Updated: {updated_at.month}/{updated_at.day} {updated_at.hour}:{updated_at.minute:02}"
-
         Display.__add_text_to_group(g, pH, 20, 15)
         Display.__add_text_to_group(g, DO, 20, 45)
         Display.__add_text_to_group(g, air_temp, 20, 75)
         Display.__add_text_to_group(g, water_temp, 20, 105)
-        Display.__add_text_to_group(g, updated, 120, 15, SMALL_FONT)
+
+        if updated_at is not None:
+            updated = f"Updated: {updated_at.month}/{updated_at.day} {updated_at.hour}:{updated_at.minute:02}"
+            Display.__add_text_to_group(g, updated, 120, 15, SMALL_FONT)
 
         self.__display.show(g)
         self.__display.refresh()
