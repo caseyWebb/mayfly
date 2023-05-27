@@ -1,31 +1,59 @@
-def init(ulp):
+import alarm
+from ulp import ULP  # type: ignore
+
+ulp = ULP()
+
+
+def get_wifi_connection(attempts=0):
     try:
-        import adafruit_ntp
-        import ldo2 as ldo2
-        import rtc
-        from secrets import TZ_OFFSET  # type: ignore
+        from secrets import (
+            WIFI_SSID,  # type: ignore
+            WIFI_PASS,  # type: ignore
+        )
         import socketpool
         import wifi
 
-        ldo2.disable()
-
-        print("Setting time...", end=" ")
-        pool = socketpool.SocketPool(wifi.radio)
-        ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
-        rtc.RTC().datetime = ntp.datetime
+        print(f"Connecting to WiFi network {WIFI_SSID}...", end=" ")
+        wifi.radio.connect(WIFI_SSID, WIFI_PASS, timeout=3)
         print("Done!")
 
-        print("Starting ULP...", end=" ")
-        ulp.start()
-        print("Done!")
+        return socketpool.SocketPool(wifi.radio)
 
     except Exception as e:
-        print("Exception encoutered:", e)
-        print("Trying again...")
-        init(ulp)
+        if attempts < 3:
+            print("Exception encoutered:", e)
+            print(f"Trying again ({++attempts}/3)")
+            return get_wifi_connection(attempts - 1)
+        else:
+            print("Giving up!")
+            raise e
 
 
-def update(ulp):
+def init():
+    import adafruit_ntp
+    import board
+    from digitalio import DigitalInOut, Direction
+    import rtc
+    from secrets import TZ_OFFSET  # type: ignore
+
+    # Disable the second LDO to save power
+    ldo2 = DigitalInOut(board.LDO2)
+    ldo2.direction = Direction.OUTPUT
+    ldo2.value = False
+
+    print("Setting time...", end=" ")
+    pool = get_wifi_connection()
+    ntp = adafruit_ntp.NTP(pool, tz_offset=TZ_OFFSET)
+    rtc.RTC().datetime = ntp.datetime
+    print("Done!")
+
+    print("Starting ULP...", end=" ")
+    ulp.start()
+    print("Done!")
+
+
+def update():
+    from adafruit_datetime import datetime
     from display import Display
     from sensors import Sensors
     from secrets import (
@@ -33,20 +61,15 @@ def update(ulp):
         MQTT_BROKER,  # type: ignore
         MQTT_PORT,  # type: ignore
     )
-    import socketpool
     import adafruit_minimqtt.adafruit_minimqtt as MQTT
-    import wifi
 
     debug = ulp.shared_memory.read_bool("debug")
-    pool = socketpool.SocketPool(wifi.radio)
+    display = Display()
+    now = datetime.now()
     sensors = Sensors(ulp.shared_memory)
-    mqtt_client = MQTT.MQTT(
-        broker=MQTT_BROKER,
-        port=MQTT_PORT,
-        socket_pool=pool,
-    )
 
     if debug:
+        print("Time:", now)
         print("pH:", sensors.pH)
         print("DO (mg/L):", sensors.DO_mg_L)
         print("DO (% sat):", sensors.DO_percent_saturation)
@@ -55,46 +78,37 @@ def update(ulp):
         print("Modified:", sensors.modified)
         ulp.resume()
     else:
-        Display().update(datetime.now(), sensors)
+        display.update(now, sensors)
 
-    print(f"Sending data to MQTT broker {MQTT_BROKER}...", end=" ")
-    mqtt_client.connect()
-    mqtt_client.publish(MQTT_TOPIC, sensors.to_binary())
-    mqtt_client.disconnect()
+    pool = get_wifi_connection()
+    mqtt = MQTT.MQTT(
+        broker=MQTT_BROKER,
+        port=MQTT_PORT,
+        socket_pool=pool,
+    )
+    payload = sensors.to_binary()
+
+    print(f"Sending data {payload} to MQTT broker {MQTT_BROKER}...", end=" ")
+    mqtt.connect()
+    mqtt.publish(MQTT_TOPIC, payload)
+    mqtt.disconnect()
     print("Done!")
 
 
-import alarm
-from ulp import ULP  # type: ignore
-
-ulp = ULP()
-
 try:
-    from adafruit_datetime import datetime
-    from secrets import (
-        WIFI_SSID,  # type: ignore
-        WIFI_PASS,  # type: ignore
-    )
     import supervisor
-    import wifi
 
     # Auto-reload and the ULP is a bad time. Use serial communication or hardware to reset.
     supervisor.runtime.autoreload = False
 
-    print(f"Connecting to WiFi network {WIFI_SSID}...", end=" ")
-    wifi.radio.connect(WIFI_SSID, WIFI_PASS)
-    print("Done!")
-
     if alarm.wake_alarm == None:
-        print("No wake alarm, initializing...")
-        init(ulp)
+        init()
     else:
-        print("ULP requested wake up at", datetime.now())
-        update(ulp)
+        update()
 
 except Exception as e:
     print("Exception encountered:", e)
 
 finally:
-    print("Entering deep sleep at", datetime.now())
+    print("Entering deep sleep")
     alarm.exit_and_deep_sleep_until_alarms(ulp.alarm)
