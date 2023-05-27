@@ -39,6 +39,10 @@ class SharedMemory:
         symbol = self.__get_symbol(name)
         self.__memory_map[symbol] = 1 if value else 0
 
+    def read_uint8(self, name):
+        symbol = self.__get_symbol(name)
+        return self.__memory_map[symbol]
+
     def read_uint16(self, name):
         output = 0
         for i in range(2):

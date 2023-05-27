@@ -4,16 +4,14 @@ import espadc
 
 
 # https://files.atlas-scientific.com/Gravity-pH-datasheet.pdf
-def __pH(shared_memory, var_name):
-    raw = shared_memory.read_uint16(var_name)
+def __pH(raw):
     mV = espadc.raw_to_voltage(raw)
     return (-5.6548 * mV / 1000) + 15.509
 
 
 # https://files.atlas-scientific.com/Gravity-DO-datasheet.pdf
-def __DO_percent_saturation(shared_memory, var_name):
+def __DO_percent_saturation(raw):
     cal = 278
-    raw = shared_memory.read_uint16(var_name)
     mV = espadc.raw_to_voltage(raw)
     return mV / cal * 100
 
@@ -29,18 +27,30 @@ def __DO_mg_L(water_temp, DO_percent_saturation):
 
 
 # https://www.analog.com/media/en/technical-documentation/data-sheets/DS18B20.pdf
-def __ds18b20(shared_memory, var_name):
-    return shared_memory.read_uint16(var_name) / 16.0
+def __ds18b20(raw):
+    return raw / 16.0
+
+
+def __modified(shared_memory, var_name):
+    bit_mask = shared_memory.read_uint8(var_name)
+    return {
+        "pH": bool(bit_mask & (1 << 0)),
+        "DO": bool(bit_mask & (1 << 1)),
+        "air_temp": bool(bit_mask & (1 << 2)),
+        "water_temp": bool(bit_mask & (1 << 3)),
+    }
 
 
 class Sensors:
     def __init__(self, shared_memory):
-        self.air_temp = __ds18b20(shared_memory, "air_temp")
-        self.water_temp = __ds18b20(shared_memory, "water_temp")
-        self.pH = __pH(shared_memory, "pH")
-        self.DO_percent_saturation = __DO_percent_saturation(shared_memory, "DO")
+        self.air_temp = __ds18b20(shared_memory.read_uint16("air_temp"))
+        self.water_temp = __ds18b20(shared_memory.read_uint16("water_temp"))
+        self.pH = __pH(shared_memory.read_uint16("pH"))
+        self.DO_percent_saturation = __DO_percent_saturation(
+            shared_memory.read_uint16("DO")
+        )
         self.DO_mg_L = __DO_mg_L(self.water_temp, self.DO_percent_saturation)
-        self.modified = shared_memory.read_bool("modified")
+        self.modified = __modified(shared_memory, "modified")
 
     # Binary format to send across the wire
     # 0x00: air_temp

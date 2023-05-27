@@ -64,8 +64,8 @@ EXPORT volatile bool debug = true;
 EXPORT volatile bool debug = false;
 #endif
 EXPORT volatile bool initialized;
-EXPORT volatile bool modified;
 EXPORT volatile bool paused;
+EXPORT volatile uint8_t modified;
 EXPORT volatile uint8_t pH_0x00;
 EXPORT volatile uint8_t pH_0x01;
 EXPORT volatile uint8_t DO_0x00;
@@ -74,6 +74,14 @@ EXPORT volatile uint8_t air_temp_0x00;
 EXPORT volatile uint8_t air_temp_0x01;
 EXPORT volatile uint8_t water_temp_0x00;
 EXPORT volatile uint8_t water_temp_0x01;
+
+/**
+ * These are used as flags to indicate which sensor reading has been updated
+ */
+#define PH_SENSOR_ID 0
+#define DO_SENSOR_ID 1
+#define AIR_TEMP_SENSOR_ID 2
+#define WATER_TEMP_SENSOR_ID 3
 
 void convert_uint16_to_uint8(uint32_t input, volatile uint8_t bytes[2])
 {
@@ -93,7 +101,11 @@ void sleep_ms(uint32_t ms)
 /**
  * Shared memory helpers
  */
-void maybe_update_sensor_reading(uint16_t new_reading, uint8_t threshold, volatile uint8_t *low_byte, volatile uint8_t *high_byte)
+void maybe_update_sensor_reading(int8_t sensor_id,
+                                 uint16_t new_reading,
+                                 uint8_t threshold,
+                                 volatile uint8_t *low_byte,
+                                 volatile uint8_t *high_byte)
 {
     uint8_t bytes[2];
     convert_uint16_to_uint8(new_reading, bytes);
@@ -102,7 +114,7 @@ void maybe_update_sensor_reading(uint16_t new_reading, uint8_t threshold, volati
     {
         *low_byte = bytes[0];
         *high_byte = bytes[1];
-        modified = true;
+        modified |= 1 << sensor_id;
     }
 }
 
@@ -132,9 +144,9 @@ uint16_t read_analog_sensor(adc_channel_t adc_channel)
     }
     return sum / 8;
 }
-void update_analog_sensor_reading(adc_channel_t adc_channel, volatile uint8_t *msb, volatile uint8_t *lsb)
+void update_analog_sensor_reading(uint8_t sensor_id, adc_channel_t adc_channel, uint8_t threshold, volatile uint8_t *msb, volatile uint8_t *lsb)
 {
-    maybe_update_sensor_reading(read_analog_sensor(adc_channel), 20, msb, lsb);
+    maybe_update_sensor_reading(sensor_id, read_analog_sensor(adc_channel), threshold, msb, lsb);
 }
 
 /**
@@ -250,7 +262,7 @@ void init_onewire()
     ulp_riscv_gpio_pulldown_disable(ONEWIRE_BUS);
 }
 
-void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *low_byte, volatile uint8_t *high_byte)
+void update_onewire_sensor_reading(uint8_t sensor_id, uint8_t *onewire_address, volatile uint8_t *low_byte, volatile uint8_t *high_byte)
 {
     if (!onewire_match_rom(onewire_address))
     {
@@ -265,11 +277,11 @@ void update_onewire_sensor_reading(uint8_t *onewire_address, volatile uint8_t *l
     uint8_t crc = crc8(scratchpad, 8);
     if (crc != scratchpad[8])
     {
-        maybe_update_sensor_reading(0, DS18B20_THRESHOLD, low_byte, high_byte);
+        maybe_update_sensor_reading(-1, 0, DS18B20_THRESHOLD, low_byte, high_byte);
         return;
     }
     uint16_t temp = (scratchpad[1] << 8) | scratchpad[0];
-    maybe_update_sensor_reading(temp, DS18B20_THRESHOLD, low_byte, high_byte);
+    maybe_update_sensor_reading(sensor_id, temp, DS18B20_THRESHOLD, low_byte, high_byte);
 }
 
 /**
@@ -306,23 +318,21 @@ void update()
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
     sleep_ms(750);
 
-    update_analog_sensor_reading(PH_ADC_CHANNEL, &pH_0x00, &pH_0x01);
-    update_analog_sensor_reading(DO_ADC_CHANNEL, &DO_0x00, &DO_0x01);
+    modified = 0;
+
+    update_analog_sensor_reading(PH_SENSOR_ID, PH_ADC_CHANNEL, PH_THRESHOLD, &pH_0x00, &pH_0x01);
+    update_analog_sensor_reading(DO_SENSOR_ID, DO_ADC_CHANNEL, DO_THRESHOLD, &DO_0x00, &DO_0x01);
     disable_analog_sensors();
 
     if (onewire_convert_t_success)
     {
-        update_onewire_sensor_reading(AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
-        update_onewire_sensor_reading(WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
+        update_onewire_sensor_reading(AIR_TEMP_SENSOR_ID, AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
+        update_onewire_sensor_reading(WATER_TEMP_SENSOR_ID, WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
     }
 
 /**
- * During development a short duty cycle and checking "modified" in the serial console
- * is an awful lot nicer than manually manipulating sensors and waiting 3 minutes between
- * (possible) EPD refreshes.
- *
- * To do that, we need to pause the ULP and wait for the main processor to
- * read the value of modified before setting it back to false.
+ * During development run the shortest possible loop to allow for rapid iteration
+ * while avoiding conflicts with the main processor
  */
 #ifdef DEBUG
     paused = true;
@@ -331,16 +341,16 @@ void update()
     {
         sleep_ms(750);
     };
+/**
+ * In production the ULP should sleep for the maximum amount of time possible
+ * and only wake up the main processor when there is new data to send
+ */
 #else
-    /**
-     * In production no need to read modified from the main processor so resume immediately
-     */
-    if (modified)
+    if (modified > 0)
     {
         ulp_riscv_wakeup_main_processor();
     }
 #endif
-    modified = false;
 }
 
 int main(void)
