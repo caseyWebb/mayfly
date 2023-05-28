@@ -49,9 +49,12 @@ class Sensors:
 
     # https://files.atlas-scientific.com/Gravity-pH-datasheet.pdf
     def __pH(self):
-        cal = self.__calibration["pH"]
         mV = espadc.raw_to_voltage(self.__shared_memory.pH)
-        return (-5.6548 * mV / 1000) + 15.509
+        cal = self.__calibration["pH"]
+        if mV > cal["mid"]:  # high voltage = low pH
+            return 7 - 3 / (cal["low"] - cal["mid"]) * (mV - cal["mid"])
+        else:
+            return 7 - 3 / (cal["mid"] - cal["high"]) * (mV - cal["mid"])
 
     # https://files.atlas-scientific.com/Gravity-DO-datasheet.pdf
     def __DO_percent_saturation(self):

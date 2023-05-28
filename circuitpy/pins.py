@@ -27,9 +27,9 @@ ldo2 = DigitalInOut(board.LDO2)
 # VBAT
 # EN
 # 5V
-button_c = DigitalInOut(board.IO11)
+BUTTON_C_PIN = board.IO11  # this is used by a wake alarm directly
 button_b = DigitalInOut(board.IO10)
-BUTTON_A_PIN = board.IO7
+button_a = DigitalInOut(board.IO7)
 EPD_DC = board.IO3
 EPD_CS = board.IO1
 buzzer = DigitalInOut(board.IO38)

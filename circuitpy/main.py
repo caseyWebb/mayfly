@@ -15,12 +15,12 @@ from digitalio import Direction, Pull
 import espadc
 from espulp import ULPAlarm
 import json
-from pins import ldo2, buzzer, BUTTON_A_PIN, button_b, button_c
+from pins import ldo2, buzzer, button_a, button_b, BUTTON_C_PIN
 import rtc
 from sensors import Sensors
 import socketpool
 import supervisor
-from time import sleep
+import time
 from ulp import ULP, ULPRunMode
 
 ulp = ULP()
@@ -35,21 +35,17 @@ def get_calibration():
         print("Exception reading calibration:", e)
         return {
             "ph": {
-                "low": 4,
-                "mid": 7,
-                "high": 10,
+                "low": 2030,
+                "mid": 1500,
+                "high": 975,
             },
-            "DO": 400,
+            "DO": 440,
         }
 
 
 def set_calibration(calibration):
-    try:
-        with open("/calibration/calibration.json", "w") as f:
-            json.dump(calibration, f)
-
-    except Exception as e:
-        print("Exception writing calibration:", e)
+    with open("/calibration/calibration.json", "w") as f:
+        json.dump(calibration, f)
 
 
 def get_current_time():
@@ -79,6 +75,60 @@ def get_wifi_connection(attempts=0):
         else:
             print("Giving up!")
             return None
+
+
+def beep_confirm():
+    beep_morse(".")
+
+
+def beep_success():
+    beep_morse("..")
+
+
+def beep_done():
+    beep_morse("...")
+
+
+def beep_error():
+    beep_morse("---")
+
+
+def beep_morse(sequence):
+    for symbol in sequence:
+        if symbol == ".":
+            buzzer.value = True
+            time.sleep(0.1)
+        elif symbol == "-":
+            buzzer.value = True
+            time.sleep(0.3)
+        buzzer.value = False
+        time.sleep(0.1)
+
+
+def wait_for_confirmation(btn, timeout=5):
+    btn.direction = Direction.INPUT
+    btn.pull = Pull.UP
+    start = time.monotonic()
+    while True:
+        if time.monotonic() - start > timeout:
+            raise TimeoutError("Timed out waiting for confirmation!")
+        elif not btn.value:
+            return True
+
+
+def wait_for_selection(btn1, btn2, timeout=5):
+    btn1.direction = Direction.INPUT
+    btn2.direction = Direction.INPUT
+    btn1.pull = Pull.UP
+    btn2.pull = Pull.UP
+    start = time.monotonic()
+    while True:
+        if time.monotonic() - start > timeout:
+            raise TimeoutError("Timed out waiting for selection!")
+        elif not btn1.value:
+            return btn1
+        elif not btn2.value:
+            return btn2
 
 
 def init():
@@ -133,54 +183,122 @@ def update():
 def calibrate():
     ulp.set_run_mode(ULPRunMode.CALIBRATION)
 
-    calibration = get_calibration()
-    display = Display()
-    sensors = Sensors(ulp.shared_memory, calibration)
+    Display().show_message("Calibrating...", ["See CALIBRATION.md for instructions."])
 
-    display.show_message("Calibrating...")
-    beep()
+    beep_confirm()
+
+    try:
+        selected = wait_for_selection(button_a, button_b)
+    except TimeoutError:
+        print("Timed out waiting for selection!")
+        beep_error()
+        return
+
+    if selected == button_a:
+        print("Dissolved oxygen selected")
+        beep_morse("-..")  # d
+        calibrate_DO()
+    elif selected == button_b:
+        print("pH selected")
+        beep_morse(".--.")  # p
+        calibrate_pH()
+
+
+def calibrate_DO():
     print("Waiting for confirmation...")
-    confirmed = wait_for_confirmation(button_b, button_c)
-    if confirmed:
-        beep()
-        print("Confirmed, calibrating DO...")
+    wait_for_confirmation(button_a, timeout=20)
+    beep_confirm()
+
+    print("Ready. Taking DO readings...")
+    calibration = get_calibration()
+    sensors = Sensors(ulp.shared_memory, calibration)
+    stable_threshold = 80
+    stable_timeout = 30
+    start = time.monotonic()
+    readings = list((0,) * 10)
+    i = 0
+    while True:
+        if time.monotonic() - start > stable_timeout:
+            raise TimeoutError("Timed out waiting for stable reading!")
+        raw = sensors.raw["DO"]
+        readings[i] = raw
+        spread = max(readings) - min(readings)
+        i = (i + 1) % 10
+        print(raw, f"∆{spread}")
+        if len(readings) == 10 and spread < stable_threshold:
+            break
+        time.sleep(0.1)
+
+    saturation_mV = espadc.raw_to_voltage(round(sum(readings) / len(readings)))
+
+    print("Saving calibration...", end=" ")
+    calibration["DO"] = saturation_mV
+    set_calibration(calibration)
+    print("Done!")
+    time.sleep(0.5)
+    beep_done()
+
+
+def calibrate_pH():
+    calibration = get_calibration()
+    sensors = Sensors(ulp.shared_memory, calibration)
+    stable_threshold = 80
+    stable_timeout = 30
+
+    low_cal_mV = -1
+    mid_cal_mV = -1
+    high_cal_mV = -1
+
+    for i in range(3):
+        print("Waiting for confirmation...")
+        # longer timeout to allow rinsing probe and moving to next buffer
+        wait_for_confirmation(button_a, timeout=120)
+        beep_confirm()
+
+        print("Ready. Taking pH readings...")
+        start = time.monotonic()
         readings = list((0,) * 10)
         i = 0
-        threshold = 80
         while True:
-            raw = sensors.raw["DO"]
+            if time.monotonic() - start > stable_timeout:
+                raise TimeoutError("Timed out waiting for stable reading!")
+            raw = sensors.raw["pH"]
             readings[i] = raw
             spread = max(readings) - min(readings)
             i = (i + 1) % 10
             print(raw, f"∆{spread}")
-            if len(readings) == 10 and spread < threshold:
+            if len(readings) == 10 and spread < stable_threshold:
                 break
-            sleep(0.1)
-        calibration["DO"] = espadc.raw_to_voltage(round(sum(readings) / len(readings)))
-        beep()
+            time.sleep(0.1)
+
+        cal_mV = espadc.raw_to_voltage(round(sum(readings) / len(readings)))
+
+        # auto-detect calibration point
+        sensors.update()
+        if sensors.pH > 9:
+            high_cal_mV = cal_mV
+        elif sensors.pH < 5:
+            low_cal_mV = cal_mV
+        else:
+            mid_cal_mV = cal_mV
+
+        # beep to indicate calibration point taken, but only for first two
+        if i < 2:
+            beep_success()
+
+    if low_cal_mV == -1 or mid_cal_mV == -1 or high_cal_mV == -1:
+        raise Exception("Missing calibration point!")
 
     print("Saving calibration...", end=" ")
+    calibration["pH"] = {
+        "low": low_cal_mV,
+        "mid": mid_cal_mV,
+        "high": high_cal_mV,
+    }
     set_calibration(calibration)
     print("Done!")
 
-
-def beep():
-    buzzer.direction = Direction.OUTPUT
-    buzzer.value = True
-    sleep(0.25)
-    buzzer.value = False
-
-
-def wait_for_confirmation(confirm_button, cancel_button):
-    confirm_button.direction = Direction.INPUT
-    cancel_button.direction = Direction.INPUT
-    confirm_button.pull = Pull.UP
-    cancel_button.pull = Pull.UP
-    while True:
-        if not confirm_button.value:
-            return True
-        elif not cancel_button.value:
-            return False
+    beep_done()
 
 
 def main():
@@ -204,7 +322,7 @@ def main():
 
     finally:
         calibration_button_alarm = alarm.pin.PinAlarm(
-            pin=BUTTON_A_PIN, value=False, pull=True
+            pin=BUTTON_C_PIN, value=False, pull=True
         )
         print("Entering deep sleep")
         alarm.exit_and_deep_sleep_until_alarms(ulp.alarm, calibration_button_alarm)
