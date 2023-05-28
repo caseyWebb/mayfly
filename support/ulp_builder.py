@@ -47,7 +47,7 @@ class ULPBuilder:
 
         return {
             "debug": symtab.get_first_symbol_by_name("debug").entry.st_value,
-            "paused": symtab.get_first_symbol_by_name("paused").entry.st_value,
+            "run_mode": symtab.get_first_symbol_by_name("run_mode").entry.st_value,
             "sensors": sensors,
         }
 

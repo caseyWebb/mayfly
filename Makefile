@@ -49,6 +49,10 @@ flash-all: circuitpy/lib /Volumes/CIRCUITPY
 flash: circuitpy/ulp.py /Volumes/CIRCUITPY
 	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete circuitpy/ /Volumes/CIRCUITPY
 
+.PHONY: flash-git-diff
+flash-git-diff: circuitpy/ulp.py /Volumes/CIRCUITPY
+	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete --files-from=<(git diff --name-only) circuitpy/ /Volumes/CIRCUITPY
+
 build:
 	mkdir -p build
 
@@ -65,7 +69,7 @@ build/ulp.ld: ulp/link.ld build
 clean:
 	rm -f build/* circuitpy/ulp.py 
 
-circuitpy/ulp.py: build/ulp
+circuitpy/ulp.py: build/ulp templates/ulp.py.j2
 	python ./support/ulp_builder.py
 
 /Volumes/CIRCUITPY:

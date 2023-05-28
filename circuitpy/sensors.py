@@ -3,51 +3,36 @@
 import espadc
 
 
-# https://files.atlas-scientific.com/Gravity-pH-datasheet.pdf
-def __pH(raw):
-    mV = espadc.raw_to_voltage(raw)
-    return (-5.6548 * mV / 1000) + 15.509
-
-
-# https://files.atlas-scientific.com/Gravity-DO-datasheet.pdf
-def __DO_percent_saturation(raw):
-    cal = 278
-    mV = espadc.raw_to_voltage(raw)
-    return mV / cal * 100
-
-
-# Magic
-def __DO_mg_L(water_temp, DO_percent_saturation):
-    return (DO_percent_saturation / 100) * (
-        14.641
-        - 0.41022 * water_temp
-        + 0.007991 * water_temp**2
-        - 0.000077774 * water_temp**3
-    )
-
-
-# https://www.analog.com/media/en/technical-documentation/data-sheets/DS18B20.pdf
-def __ds18b20(raw):
-    return raw / 16.0
-
-
-def __modified(bit_mask):
-    return {
-        "pH": bool(bit_mask & (1 << 0)),
-        "DO": bool(bit_mask & (1 << 1)),
-        "air_temp": bool(bit_mask & (1 << 2)),
-        "water_temp": bool(bit_mask & (1 << 3)),
-    }
-
-
 class Sensors:
-    def __init__(self, shared_memory):
-        self.air_temp = __ds18b20(shared_memory.air_temp)
-        self.water_temp = __ds18b20(shared_memory.water_temp)
-        self.pH = __pH(shared_memory.pH)
-        self.DO_percent_saturation = __DO_percent_saturation(shared_memory.DO)
-        self.DO_mg_L = __DO_mg_L(self.water_temp, self.DO_percent_saturation)
-        self.modified = __modified(shared_memory.modified)
+    def __init__(self, shared_memory, calibration):
+        self.__shared_memory = shared_memory
+        self.__calibration = calibration
+        self.update()
+
+    def update(self):
+        self.air_temp = self.__ds18b20(self.__shared_memory.air_temp)
+        self.water_temp = self.__ds18b20(self.__shared_memory.water_temp)
+        self.pH = self.__pH()
+        self.DO_percent_saturation = self.__DO_percent_saturation()
+        self.DO_mg_L = self.__DO_mg_L(self.water_temp, self.DO_percent_saturation)
+        self.modified = self.__modified()
+
+    @property
+    def raw(self):
+        return {
+            "air_temp": self.__shared_memory.air_temp,
+            "water_temp": self.__shared_memory.water_temp,
+            "pH": self.__shared_memory.pH,
+            "DO": self.__shared_memory.DO,
+        }
+
+    def print(self):
+        print("pH:", self.pH)
+        print("DO (mg/L):", self.DO_mg_L)
+        print("DO (% sat):", self.DO_percent_saturation)
+        print("Air temp:", self.air_temp)
+        print("Water temp:", self.water_temp)
+        print("Modified:", self.modified)
 
     # Binary format to send across the wire
     # 0x00: air_temp
@@ -61,3 +46,36 @@ class Sensors:
             | (int(round(self.pH * 10)) << 8)
             | int(round(self.DO_percent_saturation))
         )
+
+    # https://files.atlas-scientific.com/Gravity-pH-datasheet.pdf
+    def __pH(self):
+        cal = self.__calibration["pH"]
+        mV = espadc.raw_to_voltage(self.__shared_memory.pH)
+        return (-5.6548 * mV / 1000) + 15.509
+
+    # https://files.atlas-scientific.com/Gravity-DO-datasheet.pdf
+    def __DO_percent_saturation(self):
+        cal = self.__calibration["DO"]
+        mV = espadc.raw_to_voltage(self.__shared_memory.DO)
+        return mV / cal * 100
+
+    # Magic
+    def __DO_mg_L(self, water_temp, DO_percent_saturation):
+        return (DO_percent_saturation / 100) * (
+            14.641
+            - 0.41022 * water_temp
+            + 0.007991 * water_temp**2
+            - 0.000077774 * water_temp**3
+        )
+
+    # https://www.analog.com/media/en/technical-documentation/data-sheets/DS18B20.pdf
+    def __ds18b20(self, raw):
+        return raw / 16.0
+
+    def __modified(self):
+        return {
+            "pH": bool(self.__shared_memory.modified & (1 << 0)),
+            "DO": bool(self.__shared_memory.modified & (1 << 1)),
+            "air_temp": bool(self.__shared_memory.modified & (1 << 2)),
+            "water_temp": bool(self.__shared_memory.modified & (1 << 3)),
+        }

@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -52,6 +51,13 @@
 static uint8_t AIR_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x18, 0x1e, 0x78, 0x25, 0x20, 0x01, 0xb0};
 static uint8_t WATER_TEMP_ONEWIRE_ADDRESS[] = {0x28, 0x6e, 0x0d, 0x80, 0x25, 0x20, 0x01, 0xc5};
 
+typedef enum
+{
+    RUN_MODE_NORMAL,
+    RUN_MODE_PAUSED,
+    RUN_MODE_CALIBRATION
+} run_mode_t;
+
 /**
  * Shared memory values are always 8-bit integers, so to pass larger numbers
  * (ADC has 13-bit resolution) we need to split the number into 2 bytes.
@@ -63,8 +69,7 @@ EXPORT volatile bool debug = true;
 #else
 EXPORT volatile bool debug = false;
 #endif
-EXPORT volatile bool initialized;
-EXPORT volatile bool paused;
+EXPORT volatile run_mode_t run_mode;
 EXPORT volatile uint8_t modified;
 EXPORT volatile uint8_t pH_0x00;
 EXPORT volatile uint8_t pH_0x01;
@@ -110,7 +115,7 @@ void maybe_update_sensor_reading(int8_t sensor_id,
     uint8_t bytes[2];
     convert_uint16_to_uint8(new_reading, bytes);
     // Thresholds are below 255, so only need to check low byte
-    if (abs(*low_byte - bytes[0]) > threshold)
+    if (run_mode == RUN_MODE_CALIBRATION || abs(*low_byte - bytes[0]) > threshold)
     {
         *low_byte = bytes[0];
         *high_byte = bytes[1];
@@ -288,31 +293,10 @@ void update_onewire_sensor_reading(uint8_t sensor_id, uint8_t *onewire_address, 
  * Business logic
  */
 
-void init_ulp_wakeup_period()
-{
-#ifdef DEBUG
-    return;
-#endif
-    /*
-     * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
-     * so set the timer register directly. This is less precise and readable, but ends up being
-     * about 3 minutes which is perfect for the EPD refresh rate.
-     */
-    REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, INT64_MAX);
-}
-
-void init()
-{
-    init_analog_sensors();
-    init_onewire();
-    init_ulp_wakeup_period();
-    initialized = true;
-}
-
 void update()
 {
-
     enable_analog_sensors();
+
     bool onewire_convert_t_success = onewire_convert_t();
 
     // Wait for ds18b20s t conversion to complete and analog sensors to stabilize
@@ -329,36 +313,65 @@ void update()
         update_onewire_sensor_reading(AIR_TEMP_SENSOR_ID, AIR_TEMP_ONEWIRE_ADDRESS, &air_temp_0x00, &air_temp_0x01);
         update_onewire_sensor_reading(WATER_TEMP_SENSOR_ID, WATER_TEMP_ONEWIRE_ADDRESS, &water_temp_0x00, &water_temp_0x01);
     }
+}
 
-/**
- * During development run the shortest possible loop to allow for rapid iteration
- * while avoiding conflicts with the main processor
- */
-#ifdef DEBUG
-    paused = true;
-    ulp_riscv_wakeup_main_processor();
-    while (paused)
+void start_calibration()
+{
+    while (run_mode == RUN_MODE_CALIBRATION)
     {
-        sleep_ms(750);
-    };
-/**
- * In production the ULP should sleep for the maximum amount of time possible
- * and only wake up the main processor when there is new data to send
- */
-#else
-    if (modified > 0)
-    {
-        ulp_riscv_wakeup_main_processor();
+        enable_analog_sensors();
+        update_analog_sensor_reading(PH_SENSOR_ID, PH_ADC_CHANNEL, PH_THRESHOLD, &pH_0x00, &pH_0x01);
+        update_analog_sensor_reading(DO_SENSOR_ID, DO_ADC_CHANNEL, DO_THRESHOLD, &DO_0x00, &DO_0x01);
     }
-#endif
+    disable_analog_sensors();
 }
 
 int main(void)
 {
-    if (!initialized)
+    if (!run_mode)
     {
-        init();
+        init_analog_sensors();
+        init_onewire();
+        run_mode = RUN_MODE_NORMAL;
     }
-    update();
+
+    switch (run_mode)
+    {
+    case RUN_MODE_PAUSED:
+        break;
+
+    case RUN_MODE_CALIBRATION:
+        start_calibration();
+        break;
+
+    case RUN_MODE_NORMAL:
+        update();
+
+        // run_mode could have been mutated while updating
+        if (run_mode == RUN_MODE_CALIBRATION)
+        {
+            return 0;
+        }
+
+#ifdef DEBUG
+        /**
+         * During development run the shortest possible loop to allow for rapid iteration
+         * while avoiding conflicts with the main processor
+         */
+        run_mode = RUN_MODE_PAUSED;
+        ulp_riscv_wakeup_main_processor();
+#else
+        /*
+         * Using ulp_set_wakeup_period causes all sorts of madness with the compiler configuration,
+         * so set the timer register directly. This is less precise and readable, but ends up being
+         * about 3 minutes which is perfect for the EPD refresh rate.
+         */
+        REG_SET_FIELD(RTC_CNTL_ULP_CP_TIMER_1_REG, RTC_CNTL_ULP_CP_TIMER_SLP_CYCLE, UINT32_MAX);
+        if (modified > 0)
+        {
+            ulp_riscv_wakeup_main_processor();
+        }
+#endif
+    }
     return 0;
 }

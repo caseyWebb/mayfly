@@ -1,9 +1,9 @@
 from adafruit_bitmap_font import bitmap_font
 from adafruit_display_text import label
 import adafruit_il0373
-import board
 import busio
 import displayio
+from pins import EPD_CS, EPD_DC, SCK, MOSI
 
 DISPLAY_WIDTH = 296
 DISPLAY_HEIGHT = 128
@@ -12,14 +12,11 @@ FOREGROUND_COLOR = 0x000000
 FONT = bitmap_font.load_font("/font/UpheavalTT-BRK--28.bdf")
 SMALL_FONT = bitmap_font.load_font("/font/UpheavalTT-BRK--16.bdf")
 
-EPD_CS = board.D5
-EPD_DC = board.D6
-
 
 class Display:
     def __init__(self):
         displayio.release_displays()
-        spi = busio.SPI(board.SCK, board.MOSI)
+        spi = busio.SPI(SCK, MOSI)
         display_bus = displayio.FourWire(
             spi, command=EPD_DC, chip_select=EPD_CS, baudrate=1000000
         )
@@ -34,7 +31,7 @@ class Display:
             refresh_time=1,
         )
 
-    def update(self, updated_at, sensors):
+    def show_sensors(self, updated_at, sensors):
         g = displayio.Group()
         palette = displayio.Palette(1)
         palette[0] = BACKGROUND_COLOR
@@ -55,6 +52,22 @@ class Display:
         if updated_at is not None:
             updated = f"Updated: {updated_at.month}/{updated_at.day} {updated_at.hour}:{updated_at.minute:02}"
             Display.__add_text_to_group(g, updated, 120, 15, SMALL_FONT)
+
+        self.__display.show(g)
+        self.__display.refresh()
+
+    def show_message(self, message, sub_messages=[]):
+        g = displayio.Group()
+        palette = displayio.Palette(1)
+        palette[0] = BACKGROUND_COLOR
+
+        background_bitmap = displayio.Bitmap(DISPLAY_WIDTH, DISPLAY_HEIGHT, 1)
+        t = displayio.TileGrid(background_bitmap, pixel_shader=palette)
+        g.append(t)
+
+        Display.__add_text_to_group(g, message, 20, 15)
+        for i, sub_message in enumerate(sub_messages):
+            Display.__add_text_to_group(g, sub_message, 20, 45 + (i * 30), SMALL_FONT)
 
         self.__display.show(g)
         self.__display.refresh()

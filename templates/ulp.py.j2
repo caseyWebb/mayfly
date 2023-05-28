@@ -9,6 +9,13 @@ import memorymap
 
 from pins import ULP_ADC_PINS, ULP_GPIO_PINS
 
+
+class ULPRunMode(object):
+    NORMAL = 0
+    PAUSED = 1
+    CALIBRATION = 2
+
+
 class ULP:
     def __init__(self):
         self.__program = espulp.ULP(espulp.Architecture.RISCV)
@@ -16,15 +23,16 @@ class ULP:
         self.shared_memory = __SharedMemory__()
 
     def start(self):
-        self.__program.halt()
-        self.__program.run(
-            {{ code }},
-            pins=ULP_GPIO_PINS,
-            adc_pins=ULP_ADC_PINS
-        )
+        self.__program.run({{code}}, pins=ULP_GPIO_PINS, adc_pins=ULP_ADC_PINS)
 
     def resume(self):
-        self.shared_memory.paused = False
+        self.set_run_mode(ULPRunMode.NORMAL)
+
+    def get_run_mode(self):
+        return self.shared_memory.run_mode
+
+    def set_run_mode(self, mode):
+        self.shared_memory.run_mode = mode
 
 
 class __SharedMemory__:
@@ -33,14 +41,15 @@ class __SharedMemory__:
 
     @property
     def debug(self):
-        return self.__memory_map[{{ symbols.debug }}] == 1
+        return self.__memory_map[{{symbols.debug}}] == 1
 
     @property
-    def paused(self):
-        return self.__memory_map[{{ symbols.paused }}] == 1
-    @paused.setter
-    def paused(self, value):
-        self.__memory_map[{{ symbols.paused }}] = 1 if value else 0
+    def run_mode(self):
+        return self.__memory_map[{{symbols.run_mode}}]
+
+    @run_mode.setter
+    def run_mode(self, value):
+        self.__memory_map[{{symbols.run_mode}}] = value
 
     {% for symbol, locations in symbols.sensors.items() %}
     @property
