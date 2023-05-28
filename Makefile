@@ -47,7 +47,7 @@ flash-all: circuitpy/lib /Volumes/CIRCUITPY
 
 .PHONY: flash
 flash: circuitpy/ulp.py /Volumes/CIRCUITPY
-	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete circuitpy/ /Volumes/CIRCUITPY
+	rsync -avhP --exclude secrets.py.example --exclude calibration.json --exclude lib --exclude font --delete circuitpy/ /Volumes/CIRCUITPY
 
 .PHONY: flash-git-diff
 flash-git-diff: circuitpy/ulp.py /Volumes/CIRCUITPY

@@ -69,6 +69,7 @@ EXPORT volatile bool debug = true;
 #else
 EXPORT volatile bool debug = false;
 #endif
+EXPORT volatile bool awake;
 EXPORT volatile run_mode_t run_mode;
 EXPORT volatile uint8_t modified;
 EXPORT volatile uint8_t pH_0x00;
@@ -328,6 +329,8 @@ void start_calibration()
 
 int main(void)
 {
+    awake = true;
+
     if (!run_mode)
     {
         init_analog_sensors();
@@ -350,7 +353,7 @@ int main(void)
         // run_mode could have been mutated while updating
         if (run_mode == RUN_MODE_CALIBRATION)
         {
-            return 0;
+            return main();
         }
 
 #ifdef DEBUG
@@ -373,5 +376,8 @@ int main(void)
         }
 #endif
     }
+
+    awake = false;
+
     return 0;
 }

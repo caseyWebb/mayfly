@@ -2,6 +2,8 @@ from adafruit_datetime import datetime
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 import adafruit_ntp
 import alarm
+from button import wait_for_confirmation, wait_for_selection
+from buzzer import beep_confirm, beep_done, beep_error, beep_success, beep_morse
 from config import (
     MQTT_BROKER,
     MQTT_PORT,
@@ -77,60 +79,6 @@ def get_wifi_connection(attempts=0):
             return None
 
 
-def beep_confirm():
-    beep_morse(".")
-
-
-def beep_success():
-    beep_morse("..")
-
-
-def beep_done():
-    beep_morse("...")
-
-
-def beep_error():
-    beep_morse("---")
-
-
-def beep_morse(sequence):
-    for symbol in sequence:
-        if symbol == ".":
-            buzzer.value = True
-            time.sleep(0.1)
-        elif symbol == "-":
-            buzzer.value = True
-            time.sleep(0.3)
-        buzzer.value = False
-        time.sleep(0.1)
-
-
-def wait_for_confirmation(btn, timeout=5):
-    btn.direction = Direction.INPUT
-    btn.pull = Pull.UP
-    start = time.monotonic()
-    while True:
-        if time.monotonic() - start > timeout:
-            raise TimeoutError("Timed out waiting for confirmation!")
-        elif not btn.value:
-            return True
-
-
-def wait_for_selection(btn1, btn2, timeout=5):
-    btn1.direction = Direction.INPUT
-    btn2.direction = Direction.INPUT
-    btn1.pull = Pull.UP
-    btn2.pull = Pull.UP
-    start = time.monotonic()
-    while True:
-        if time.monotonic() - start > timeout:
-            raise TimeoutError("Timed out waiting for selection!")
-        elif not btn1.value:
-            return btn1
-        elif not btn2.value:
-            return btn2
-
-
 def init():
     # Disable the second LDO to save power
     ldo2.direction = Direction.OUTPUT
@@ -156,8 +104,9 @@ def update():
     calibration = get_calibration()
     sensors = Sensors(ulp.shared_memory, calibration)
 
+    sensors.print()
+
     if ulp.shared_memory.debug:
-        sensors.print()
         ulp.set_run_mode(ULPRunMode.NORMAL)
     else:
         display.show_sensors(now, sensors)
@@ -181,27 +130,22 @@ def update():
 
 
 def calibrate():
-    ulp.set_run_mode(ULPRunMode.CALIBRATION)
-
-    Display().show_message("Calibrating...", ["See CALIBRATION.md for instructions."])
-
-    beep_confirm()
-
     try:
-        selected = wait_for_selection(button_a, button_b)
-    except TimeoutError:
-        print("Timed out waiting for selection!")
-        beep_error()
-        return
+        ulp.set_run_mode(ULPRunMode.CALIBRATION)
+        beep_confirm()
 
-    if selected == button_a:
-        print("Dissolved oxygen selected")
-        beep_morse("-..")  # d
-        calibrate_DO()
-    elif selected == button_b:
-        print("pH selected")
-        beep_morse(".--.")  # p
-        calibrate_pH()
+        selected = wait_for_selection(button_a, button_b, timeout=30)
+
+        if selected == button_a:
+            print("Dissolved oxygen selected")
+            beep_morse("-..")  # d
+            calibrate_DO()
+        elif selected == button_b:
+            print("pH selected")
+            beep_morse(".--.")  # p
+            calibrate_pH()
+    finally:
+        ulp.set_run_mode(ULPRunMode.NORMAL)
 
 
 def calibrate_DO():
@@ -209,14 +153,19 @@ def calibrate_DO():
     wait_for_confirmation(button_a, timeout=20)
     beep_confirm()
 
+    while not ulp.shared_memory.awake:
+        print("Waiting for ULP to wake up...")
+        time.sleep(5)
+
     print("Ready. Taking DO readings...")
+
     calibration = get_calibration()
     sensors = Sensors(ulp.shared_memory, calibration)
     stable_threshold = 80
     stable_timeout = 30
-    start = time.monotonic()
     readings = list((0,) * 10)
     i = 0
+    start = time.monotonic()
     while True:
         if time.monotonic() - start > stable_timeout:
             raise TimeoutError("Timed out waiting for stable reading!")
@@ -230,6 +179,9 @@ def calibrate_DO():
         time.sleep(0.1)
 
     saturation_mV = espadc.raw_to_voltage(round(sum(readings) / len(readings)))
+
+    if saturation_mV < 1:
+        raise ValueError("Invalid saturation voltage!")
 
     print("Saving calibration...", end=" ")
     calibration["DO"] = saturation_mV
@@ -315,9 +267,9 @@ def main():
         elif isinstance(alarm.wake_alarm, alarm.pin.PinAlarm):
             print("Calibration button pressed, starting calibration...")
             calibrate()
-            ulp.set_run_mode(ULPRunMode.NORMAL)
 
     except Exception as e:
+        beep_error()
         print("Exception encountered:", e)
 
     finally:
