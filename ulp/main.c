@@ -69,7 +69,7 @@ EXPORT volatile bool debug = true;
 #else
 EXPORT volatile bool debug = false;
 #endif
-EXPORT volatile bool awake;
+EXPORT volatile bool calibration_ready;
 EXPORT volatile run_mode_t run_mode;
 EXPORT volatile uint8_t modified;
 EXPORT volatile uint8_t pH_0x00;
@@ -318,19 +318,20 @@ void update()
 
 void start_calibration()
 {
+    enable_analog_sensors();
+    sleep_ms(750);
+    calibration_ready = true;
     while (run_mode == RUN_MODE_CALIBRATION)
     {
-        enable_analog_sensors();
         update_analog_sensor_reading(PH_SENSOR_ID, PH_ADC_CHANNEL, PH_THRESHOLD, &pH_0x00, &pH_0x01);
         update_analog_sensor_reading(DO_SENSOR_ID, DO_ADC_CHANNEL, DO_THRESHOLD, &DO_0x00, &DO_0x01);
     }
     disable_analog_sensors();
+    calibration_ready = false;
 }
 
 int main(void)
 {
-    awake = true;
-
     if (!run_mode)
     {
         init_analog_sensors();
@@ -376,8 +377,6 @@ int main(void)
         }
 #endif
     }
-
-    awake = false;
 
     return 0;
 }

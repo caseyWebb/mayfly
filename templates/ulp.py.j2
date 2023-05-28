@@ -40,8 +40,8 @@ class __SharedMemory__:
         self.__memory_map = memorymap.AddressRange(start=0x50000000, length=0x2000)
 
     @property
-    def awake(self):
-        return self.__memory_map[{{symbols.awake}}] == 1
+    def calibration_ready(self):
+        return self.__memory_map[{{symbols.calibration_ready}}] == 1
 
     @property
     def debug(self):

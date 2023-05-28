@@ -153,7 +153,7 @@ def calibrate_DO():
     wait_for_confirmation(button_a, timeout=20)
     beep_confirm()
 
-    while not ulp.shared_memory.awake:
+    while not ulp.shared_memory.calibration_ready:
         print("Waiting for ULP to wake up...")
         time.sleep(5)
 

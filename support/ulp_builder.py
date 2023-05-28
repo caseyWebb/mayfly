@@ -46,7 +46,9 @@ class ULPBuilder:
                 sensors[symbol_name].append(symbol.entry.st_value)
 
         return {
-            "awake": symtab.get_first_symbol_by_name("awake").entry.st_value,
+            "calibration_ready": symtab.get_first_symbol_by_name(
+                "calibration_ready"
+            ).entry.st_value,
             "debug": symtab.get_first_symbol_by_name("debug").entry.st_value,
             "run_mode": symtab.get_first_symbol_by_name("run_mode").entry.st_value,
             "sensors": sensors,
