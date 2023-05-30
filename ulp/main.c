@@ -131,6 +131,8 @@ void init_analog_sensors()
 {
     ulp_riscv_gpio_init(ANALOG_SENSORS_ENABLE_PIN);
     ulp_riscv_gpio_output_enable(ANALOG_SENSORS_ENABLE_PIN);
+    ulp_riscv_gpio_set_output_mode(ANALOG_SENSORS_ENABLE_PIN, RTCIO_MODE_OUTPUT_OD);
+    ulp_riscv_gpio_pulldown_disable(ANALOG_SENSORS_ENABLE_PIN);
 }
 void enable_analog_sensors()
 {
