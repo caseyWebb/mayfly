@@ -51,7 +51,7 @@ flash: circuitpy/ulp.py /Volumes/CIRCUITPY
 
 .PHONY: flash-git-diff
 flash-git-diff: circuitpy/ulp.py /Volumes/CIRCUITPY
-	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete --files-from=<(git diff --name-only) circuitpy/ /Volumes/CIRCUITPY
+	rsync -avhP --exclude secrets.py.example --exclude lib --exclude font --delete --files-from=<(git diff --name-only circuitpy/) ./ /Volumes/CIRCUITPY
 
 build:
 	mkdir -p build

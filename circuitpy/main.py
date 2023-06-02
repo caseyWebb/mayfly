@@ -13,11 +13,14 @@ from config import (
     WIFI_SSID,
 )
 from display import Display
-from digitalio import Direction, Pull
 import espadc
 from espulp import ULPAlarm
 import json
-from pins import ldo2, buzzer, button_a, button_b, BUTTON_C_PIN
+from pins import (
+    button_a,
+    button_b,
+    BUTTON_C_PIN,
+)
 import rtc
 from sensors import Sensors
 import socketpool
@@ -80,10 +83,6 @@ def get_wifi_connection(attempts=0):
 
 
 def init():
-    # Disable the second LDO to save power
-    ldo2.direction = Direction.OUTPUT
-    ldo2.value = False
-
     pool = get_wifi_connection()
     if pool is None:
         return

@@ -6,9 +6,9 @@ from digitalio import DigitalInOut
 ###
 # RESET
 # 3V3
-ANALOG_SENSORS_ENABLE_PIN = board.IO0
+# board.IO0
 # GND
-# board.IO17
+ANALOG_SENSORS_ENABLE_PIN = board.IO17
 # board.IO18
 # board.IO14
 # board.IO12
@@ -19,7 +19,6 @@ SCK = board.SCK
 MOSI = board.MOSI
 # board.IO44
 # board.IO43
-ldo2 = DigitalInOut(board.LDO2)
 
 ###
 # Short side of the board
